@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Header } from "./components/Header";
 import { Carousel, FOLDERS } from "./components/Carousel";
 import { DashboardBottom } from "./components/DashboardBottom";
+import { ChatPanel } from "./components/ChatPanel";
 
 export default function App() {
   const [activeIndex, setActiveIndex] = useState(5);
@@ -30,6 +31,8 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      <ChatPanel />
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {
