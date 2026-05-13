@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageCircle, X, Send, Loader2 } from 'lucide-react';
+import { MessageCircle, X, Send, Loader2, Paperclip } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 type Role = 'user' | 'assistant' | 'error';
 type Message = { id: string; role: Role; text: string };
 
 const STORAGE_KEY = 'metodistai.chat.history.v1';
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const ACCEPT = '.pdf,.docx,.txt,.md';
 
 function loadHistory(): Message[] {
   try {
@@ -17,13 +21,21 @@ function loadHistory(): Message[] {
   }
 }
 
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export function ChatPanel() {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [messages, setMessages] = useState<Message[]>(() => loadHistory());
   const [isSending, setIsSending] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
@@ -41,29 +53,66 @@ export function ChatPanel() {
     }
   }, [isOpen]);
 
+  const pickFile = () => fileInputRef.current?.click();
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > MAX_FILE_BYTES) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: 'error',
+          text: `Fayl juda katta (${formatSize(f.size)}). Limit: 10 MB.`,
+        },
+      ]);
+      e.target.value = '';
+      return;
+    }
+    setFile(f);
+    e.target.value = '';
+  };
+
   const send = async () => {
     const text = input.trim();
-    if (!text || isSending) return;
+    if ((!text && !file) || isSending) return;
 
-    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', text };
+    const userText = [text, file ? `📎 ${file.name} (${formatSize(file.size)})` : '']
+      .filter(Boolean)
+      .join('\n');
+
+    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', text: userText };
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
+    const sentFile = file;
+    setFile(null);
     setIsSending(true);
 
     try {
+      const formData = new FormData();
+      formData.append('message', text);
+      if (sentFile) formData.append('file', sentFile);
+
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text }),
+        body: formData,
       });
 
       if (!res.ok) {
-        const errBody = await res.text();
-        throw new Error(errBody || `HTTP ${res.status}`);
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const errBody = await res.json();
+          if (errBody?.error) errMsg = errBody.error;
+        } catch {
+          const errText = await res.text();
+          if (errText) errMsg = errText;
+        }
+        throw new Error(errMsg);
       }
 
       const data = await res.json();
-      const replyText: string = data.reply ?? '(bo‘sh javob)';
+      const replyText: string = data.reply ?? "(bo'sh javob)";
       setMessages((prev) => [
         ...prev,
         { id: crypto.randomUUID(), role: 'assistant', text: replyText },
@@ -107,11 +156,11 @@ export function ChatPanel() {
       )}
 
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-[120] w-[min(420px,calc(100vw-2rem))] h-[min(620px,calc(100vh-3rem))] bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden">
+        <div className="fixed bottom-6 right-6 z-[120] w-[min(520px,calc(100vw-2rem))] h-[min(680px,calc(100vh-3rem))] bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-gradient-to-r from-emerald-900/30 to-transparent">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-white font-medium text-sm">Claude Code</span>
+              <span className="text-white font-medium text-sm">AI Metodist</span>
             </div>
             <div className="flex items-center gap-1">
               {messages.length > 0 && (
@@ -139,18 +188,15 @@ export function ChatPanel() {
           >
             {messages.length === 0 && (
               <div className="text-center text-white/40 text-sm mt-8 px-4">
-                Savolingizni yozing. Javob lokal Claude Code CLI orqali keladi.
+                Xat matnini yozing yoki PDF/DOCX faylni biriktiring.
+                Claude metodologiya bo'yicha jadval qaytaradi.
               </div>
             )}
 
             {messages.map((m) => (
               <div
                 key={m.id}
-                className={
-                  m.role === 'user'
-                    ? 'flex justify-end'
-                    : 'flex justify-start'
-                }
+                className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}
               >
                 <div
                   className={
@@ -158,10 +204,14 @@ export function ChatPanel() {
                       ? 'max-w-[85%] bg-emerald-600/90 text-white rounded-2xl rounded-br-sm px-3.5 py-2 text-sm whitespace-pre-wrap break-words'
                       : m.role === 'error'
                       ? 'max-w-[85%] bg-red-900/40 border border-red-500/30 text-red-100 rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm whitespace-pre-wrap break-words'
-                      : 'max-w-[85%] bg-white/[0.06] border border-white/10 text-white/90 rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm whitespace-pre-wrap break-words'
+                      : 'max-w-[92%] bg-white/[0.06] border border-white/10 text-white/90 rounded-2xl rounded-bl-sm px-3.5 py-2.5 text-sm break-words chat-md'
                   }
                 >
-                  {m.text}
+                  {m.role === 'assistant' ? (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                  ) : (
+                    m.text
+                  )}
                 </div>
               </div>
             ))}
@@ -177,19 +227,49 @@ export function ChatPanel() {
           </div>
 
           <div className="border-t border-white/10 p-3 bg-black/40">
+            {file && (
+              <div className="mb-2 flex items-center gap-2 bg-white/[0.06] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white/80">
+                <Paperclip size={12} className="text-emerald-400 flex-shrink-0" />
+                <span className="truncate flex-1">{file.name}</span>
+                <span className="text-white/40 flex-shrink-0">{formatSize(file.size)}</span>
+                <button
+                  onClick={() => setFile(null)}
+                  className="text-white/50 hover:text-white flex-shrink-0"
+                  aria-label="Faylni olib tashlash"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ACCEPT}
+              onChange={onFileChange}
+              className="hidden"
+            />
             <div className="flex items-end gap-2">
+              <button
+                onClick={pickFile}
+                disabled={isSending}
+                className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] hover:border-white/20 disabled:opacity-40 text-white/70 hover:text-white flex items-center justify-center transition-colors flex-shrink-0"
+                aria-label="Fayl biriktirish"
+                title="PDF, DOCX, TXT, MD"
+              >
+                <Paperclip size={16} />
+              </button>
               <textarea
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder="Savolingizni yozing..."
+                placeholder="Xat matnini yoki savolingizni yozing..."
                 rows={1}
                 className="flex-1 resize-none bg-white/[0.04] border border-white/10 focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 outline-none rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/30 max-h-32"
               />
               <button
                 onClick={send}
-                disabled={!input.trim() || isSending}
+                disabled={(!input.trim() && !file) || isSending}
                 className="w-10 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 text-white flex items-center justify-center transition-colors flex-shrink-0"
                 aria-label="Yuborish"
               >
@@ -197,7 +277,7 @@ export function ChatPanel() {
               </button>
             </div>
             <div className="text-[10px] text-white/30 mt-1.5 px-1">
-              Enter — yuborish, Shift+Enter — yangi qator
+              Enter — yuborish, Shift+Enter — yangi qator. Fayl limit: 10 MB.
             </div>
           </div>
         </div>
