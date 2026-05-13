@@ -2,14 +2,11 @@ import 'dotenv/config';
 import express from 'express';
 import multer from 'multer';
 import mammoth from 'mammoth';
-import { createRequire } from 'node:module';
+import { PDFParse } from 'pdf-parse';
 import { spawn } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import process from 'node:process';
 import path from 'node:path';
-
-const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse');
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
@@ -42,8 +39,13 @@ async function extractText(file) {
     throw new Error(`Qo'llanilmaydigan fayl turi: ${ext}. Faqat .pdf, .docx, .txt, .md`);
   }
   if (ext === '.pdf') {
-    const result = await pdfParse(file.buffer);
-    return result.text || '';
+    const parser = new PDFParse({ data: file.buffer });
+    try {
+      const result = await parser.getText();
+      return result.text || '';
+    } finally {
+      try { await parser.destroy(); } catch {}
+    }
   }
   if (ext === '.docx') {
     const result = await mammoth.extractRawText({ buffer: file.buffer });
