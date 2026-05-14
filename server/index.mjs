@@ -2,6 +2,10 @@ import 'dotenv/config';
 import express from 'express';
 import multer from 'multer';
 import mammoth from 'mammoth';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
 import { PDFParse } from 'pdf-parse';
 import { spawn } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
@@ -14,11 +18,22 @@ const AGENT_DIR = process.env.METODIST_AGENT_DIR || '';
 const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
+// --- Auth config ---
+const AUTH_EMAIL = (process.env.AUTH_EMAIL || '').trim().toLowerCase();
+const AUTH_PASSWORD_HASH = process.env.AUTH_PASSWORD_HASH || '';
+const SESSION_SECRET = process.env.SESSION_SECRET || '';
+const TOKEN_TTL = '7d';
+const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 const ALLOWED_EXT = new Set(['.pdf', '.docx', '.txt', '.md']);
+
+function authConfigured() {
+  return Boolean(AUTH_EMAIL && AUTH_PASSWORD_HASH && SESSION_SECRET);
+}
 
 function validateAgentDir() {
   if (!AGENT_DIR) {
-    return 'METODIST_AGENT_DIR .env ichida sozlanmagan. Loyiha ildizida .env yarating va papka yo\'lini yozing.';
+    return "METODIST_AGENT_DIR .env ichida sozlanmagan. Loyiha ildizida .env yarating va papka yo'lini yozing.";
   }
   if (!existsSync(AGENT_DIR)) {
     return `Papka topilmadi: ${AGENT_DIR}. .env ichidagi METODIST_AGENT_DIR ni tekshiring.`;
@@ -60,9 +75,80 @@ const upload = multer({
 });
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '1mb' }));
+app.use(cookieParser());
 
 let currentSessionId = null;
+
+// --- Auth middleware ---
+function requireAuth(req, res, next) {
+  if (!authConfigured()) {
+    res.status(500).json({ error: 'Autentifikatsiya sozlanmagan. .env faylida AUTH_EMAIL, AUTH_PASSWORD_HASH, SESSION_SECRET ni tekshiring.' });
+    return;
+  }
+  const token = req.cookies?.token;
+  if (!token) {
+    res.status(401).json({ error: 'Avtorizatsiya kerak.' });
+    return;
+  }
+  try {
+    req.user = jwt.verify(token, SESSION_SECRET);
+    next();
+  } catch {
+    res.clearCookie('token', { path: '/' });
+    res.status(401).json({ error: 'Sessiya tugagan. Qaytadan kiring.' });
+  }
+}
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Juda ko'p urinish. 15 daqiqadan keyin qayta urining." },
+});
+
+app.post('/api/login', loginLimiter, async (req, res) => {
+  if (!authConfigured()) {
+    res.status(500).json({ error: 'Autentifikatsiya sozlanmagan. .env faylini tekshiring.' });
+    return;
+  }
+  const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+  const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  if (!email || !password) {
+    res.status(400).json({ error: 'Email va parolni kiriting.' });
+    return;
+  }
+  const emailOk = email === AUTH_EMAIL;
+  const passwordOk = await bcrypt.compare(password, AUTH_PASSWORD_HASH);
+  if (!emailOk || !passwordOk) {
+    res.status(401).json({ error: "Email yoki parol noto'g'ri." });
+    return;
+  }
+  const token = jwt.sign({ email: AUTH_EMAIL }, SESSION_SECRET, { expiresIn: TOKEN_TTL });
+  res.cookie('token', token, {
+    httpOnly: true,
+    secure: req.secure,
+    sameSite: 'strict',
+    maxAge: TOKEN_TTL_MS,
+    path: '/',
+  });
+  res.json({ ok: true, email: AUTH_EMAIL });
+});
+
+app.post('/api/logout', (req, res) => {
+  res.clearCookie('token', { path: '/' });
+  res.json({ ok: true });
+});
+
+app.get('/api/me', requireAuth, (req, res) => {
+  res.json({ email: req.user.email });
+});
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true });
+});
 
 function runClaude(prompt, sessionId) {
   return new Promise((resolve, reject) => {
@@ -130,21 +216,12 @@ function runClaude(prompt, sessionId) {
   });
 }
 
-app.get('/api/health', (_req, res) => {
-  res.json({
-    ok: !validateAgentDir(),
-    agentDir: AGENT_DIR || null,
-    error: validateAgentDir(),
-    sessionId: currentSessionId,
-  });
-});
-
-app.post('/api/reset', (_req, res) => {
+app.post('/api/reset', requireAuth, (_req, res) => {
   currentSessionId = null;
   res.json({ ok: true });
 });
 
-app.post('/api/chat', upload.single('file'), async (req, res) => {
+app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
   const dirError = validateAgentDir();
   if (dirError) {
     res.status(500).json({ error: dirError });
@@ -168,7 +245,7 @@ app.post('/api/chat', upload.single('file'), async (req, res) => {
   }
 
   if (!message && !fileText) {
-    res.status(400).json({ error: "Xabar yoki fayl yuboring." });
+    res.status(400).json({ error: 'Xabar yoki fayl yuboring.' });
     return;
   }
 
@@ -211,5 +288,10 @@ app.listen(PORT, () => {
     console.warn(`[metodistai] WARNING: ${dirError}`);
   } else {
     console.log(`[metodistai] using AGENT_DIR: ${AGENT_DIR}`);
+  }
+  if (!authConfigured()) {
+    console.warn('[metodistai] WARNING: Autentifikatsiya sozlanmagan — .env faylida AUTH_EMAIL, AUTH_PASSWORD_HASH, SESSION_SECRET kerak. Sayt kirishni rad etadi.');
+  } else {
+    console.log(`[metodistai] auth enabled for: ${AUTH_EMAIL}`);
   }
 });

@@ -91,7 +91,40 @@ METODIST_AGENT_DIR=C:\Users\ASUS\Desktop\AI Metodist Agent
 
 Saqlab yoping.
 
-### 6. Saytni ishga tushirish
+### 6. Login va parolni sozlash
+
+Sayt himoyalangan — ochilganda email + parol so'raydi. Sozlash uchun `.env`
+fayliga uchta qator kerak: `AUTH_EMAIL`, `AUTH_PASSWORD_HASH`, `SESSION_SECRET`.
+
+**Parol hash'ini yaratish** (parol ochiq holda saqlanmaydi):
+
+```powershell
+node server/hash-password.mjs "sizning-parolingiz"
+```
+
+Chiqqan satrni nusxalang. **Maxfiy kalit yaratish**:
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+```
+
+`notepad .env` ochib, quyidagilarni qo'shing (hash va kalitni qo'shtirnoq
+ichida):
+
+```
+AUTH_EMAIL=sizning@email.com
+AUTH_PASSWORD_HASH="$2b$12$..."
+SESSION_SECRET="uzun_tasodifiy_satr"
+```
+
+Saqlab yoping. Parolni keyin o'zgartirmoqchi bo'lsangiz — yangi hash yaratib,
+`AUTH_PASSWORD_HASH` ni almashtiring.
+
+> Xavfsizlik: ochiq parol hech qayerda saqlanmaydi (faqat bcrypt hash).
+> Sessiya HTTP-only cookie'da, JavaScript o'qiy olmaydi. Login sahifasi
+> brute-force urinishlardan himoyalangan (15 daqiqada 10 marta limit).
+
+### 7. Saytni ishga tushirish
 
 ```powershell
 npm run dev:all
@@ -102,8 +135,9 @@ Bu buyruq ikkita narsani parallel ishga tushiradi:
 - **web** — `http://localhost:5173` (sayt)
 - **api** — `http://localhost:3001` (Claude bilan ulanadigan backend)
 
-Brauzerda <http://localhost:5173> oching. O'ng pastki burchakdagi yashil tugmani
-bosing — chat oynasi ochiladi.
+Brauzerda <http://localhost:5173> oching. Email va parol bilan kiring.
+Keyin o'ng pastki burchakdagi yashil tugmani bosing — chat oynasi ochiladi.
+Chiqish uchun chat oynasi yuqorisidagi chiqish (logout) ikonkasini bosing.
 
 **Foydalanish:**
 
@@ -142,6 +176,12 @@ ochiladi va sayt ishga tushadi.
   (`vite.config.ts` ichidagi proxy targetini ham yangilang).
 - **Fayl yuklanmadi (juda katta)** — limit 10 MB. Faylni qisqartiring yoki
   matn sifatida paste qiling.
+- **`Autentifikatsiya sozlanmagan`** — `.env` da `AUTH_EMAIL`,
+  `AUTH_PASSWORD_HASH` yoki `SESSION_SECRET` yo'q. 6-bo'limga qarang.
+- **`Email yoki parol noto'g'ri`** — `.env` dagi `AUTH_EMAIL` ni tekshiring,
+  parol hash'ini `node server/hash-password.mjs "parol"` bilan qayta yarating.
+- **`Juda ko'p urinish`** — login 15 daqiqada 10 martadan ko'p xato kiritilgan.
+  15 daqiqa kuting yoki backend'ni qayta ishga tushiring.
 - **Chat tarixini tozalash** — chat oynasi yuqorisidagi "Tozalash" tugmasi.
 
 ## Skriptlar

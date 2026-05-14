@@ -1,14 +1,52 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 import { Header } from "./components/Header";
 import { Carousel, FOLDERS } from "./components/Carousel";
 import { DashboardBottom } from "./components/DashboardBottom";
 import { ChatPanel } from "./components/ChatPanel";
+import { LoginPage } from "./components/LoginPage";
+
+type AuthState = 'loading' | 'out' | 'in';
 
 export default function App() {
+  const [authState, setAuthState] = useState<AuthState>('loading');
   const [activeIndex, setActiveIndex] = useState(5);
-  
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/me')
+      .then((res) => {
+        if (!cancelled) setAuthState(res.ok ? 'in' : 'out');
+      })
+      .catch(() => {
+        if (!cancelled) setAuthState('out');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+    } catch {}
+    setAuthState('out');
+  };
+
   const currentModIndex = ((activeIndex % FOLDERS.length) + FOLDERS.length) % FOLDERS.length;
   const activeFolderName = FOLDERS[currentModIndex];
+
+  if (authState === 'loading') {
+    return (
+      <div className="min-h-screen bg-[#030303] flex items-center justify-center">
+        <Loader2 className="animate-spin text-emerald-500" size={28} />
+      </div>
+    );
+  }
+
+  if (authState === 'out') {
+    return <LoginPage onSuccess={() => setAuthState('in')} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#030303] text-white overflow-hidden font-sans flex flex-col relative selection:bg-emerald-500/30 custom-scrollbar">
@@ -32,7 +70,7 @@ export default function App() {
         </div>
       </div>
 
-      <ChatPanel />
+      <ChatPanel onLogout={handleLogout} />
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar {

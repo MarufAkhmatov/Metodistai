@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageCircle, X, Send, Loader2, Paperclip } from 'lucide-react';
+import { MessageCircle, X, Send, Loader2, Paperclip, LogOut } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+type ChatPanelProps = {
+  onLogout?: () => void;
+};
 
 type Role = 'user' | 'assistant' | 'error';
 type Message = { id: string; role: Role; text: string };
@@ -27,7 +31,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-export function ChatPanel() {
+export function ChatPanel({ onLogout }: ChatPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -108,6 +112,10 @@ export function ChatPanel() {
           const errText = await res.text();
           if (errText) errMsg = errText;
         }
+        if (res.status === 401 && onLogout) {
+          onLogout();
+          return;
+        }
         throw new Error(errMsg);
       }
 
@@ -170,6 +178,16 @@ export function ChatPanel() {
                   title="Tarixni tozalash"
                 >
                   Tozalash
+                </button>
+              )}
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="text-white/60 hover:text-white p-1 rounded"
+                  aria-label="Chiqish"
+                  title="Tizimdan chiqish"
+                >
+                  <LogOut size={16} />
                 </button>
               )}
               <button
