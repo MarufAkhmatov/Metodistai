@@ -124,7 +124,27 @@ Saqlab yoping. Parolni keyin o'zgartirmoqchi bo'lsangiz — yangi hash yaratib,
 > Sessiya HTTP-only cookie'da, JavaScript o'qiy olmaydi. Login sahifasi
 > brute-force urinishlardan himoyalangan (15 daqiqada 10 marta limit).
 
-### 7. Saytni ishga tushirish
+### 7. Bilim bazasi (RAG) — Python sozlash
+
+Sayt `AI Metodist Agent` papkasidagi barcha normativ hujjatlarni avtomatik
+o'qib, vektor bilim bazasiga aylantiradi. Kimdir papkaga yangi papka yoki
+hujjat qo'shsa — backend buni sezadi, qayta indekslaydi va chatdagi AI shu
+yangi hujjatlar bo'yicha ham javob bera oladi. Papka ildizida
+`KNOWLEDGE_INDEX.md` fayli avtomatik yaratilib turadi.
+
+Buning uchun Python kutubxonalarini o'rnating:
+
+```powershell
+pip install -r scripts/rag/requirements.txt
+```
+
+- Birinchi indekslashda embedding modeli bir marta yuklab olinadi
+  (~bir necha yuz MB) — internet kerak. Keyin offline ishlaydi.
+- Agar `python` buyrug'i ishlamasa, `.env` ga `PYTHON_BIN` ni to'liq yo'l
+  bilan yozing (masalan `PYTHON_BIN=C:\Python312\python.exe`).
+- Vektor ma'lumotlari `AI Metodist Agent\.rag\` yashirin papkasida saqlanadi.
+
+### 8. Saytni ishga tushirish
 
 ```powershell
 npm run dev:all
@@ -146,6 +166,11 @@ Chiqish uchun chat oynasi yuqorisidagi chiqish (logout) ikonkasini bosing.
   faylni yuklang (10 MB gacha). Xohlasangiz matn ham qo'shing.
 - Javob jadval ko'rinishida keladi (Claude `CLAUDE.md` yo'riqnomasiga
   asoslanadi).
+- **Til**: yuqori o'ng burchakdagi UZ/RU/EN tugmasi orqali sayt tilini
+  almashtiring.
+- **Yangi hujjatlar**: `AI Metodist Agent` papkasiga yangi papka/hujjat
+  qo'shsangiz, sayt ~20 soniyada avtomatik yangilanadi va AI ularni
+  bilim bazasiga qo'shib oladi.
 
 To'xtatish uchun PowerShell oynasida `Ctrl+C`.
 
@@ -182,6 +207,13 @@ ochiladi va sayt ishga tushadi.
   parol hash'ini `node server/hash-password.mjs "parol"` bilan qayta yarating.
 - **`Juda ko'p urinish`** — login 15 daqiqada 10 martadan ko'p xato kiritilgan.
   15 daqiqa kuting yoki backend'ni qayta ishga tushiring.
+- **`"python" topilmadi` yoki `fastembed o'rnatilmagan`** — bilim bazasi (RAG)
+  uchun Python kerak. `pip install -r scripts/rag/requirements.txt` ni
+  bajaring; `python` ishlamasa `.env` ga `PYTHON_BIN` ni to'liq yo'l bilan
+  yozing. RAG ishlamasa ham chat ishlayveradi (faqat avto-qidiruvsiz).
+- **Bilim bazasi yangilanmadi** — backend loglarida `[rag]` qatorlarini
+  tekshiring. Birinchi indekslash model yuklab olinishini kutadi (internet
+  kerak). Holatni `/api/rag/status` orqali ko'rish mumkin.
 - **Chat tarixini tozalash** — chat oynasi yuqorisidagi "Tozalash" tugmasi.
 
 ## Skriptlar

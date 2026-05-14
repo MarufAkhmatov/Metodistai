@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Header } from "./components/Header";
 import { Carousel } from "./components/Carousel";
@@ -31,28 +31,28 @@ export default function App() {
     };
   }, []);
 
+  const fetchFolders = useCallback(async (silent: boolean) => {
+    try {
+      const res = await fetch('/api/folders');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      setFolders(Array.isArray(data.folders) ? data.folders : []);
+      setFoldersError(null);
+    } catch (e) {
+      if (!silent) {
+        setFolders([]);
+        setFoldersError(e instanceof Error ? e.message : String(e));
+      }
+    }
+  }, []);
+
+  // Initial load + auto-refresh: yangi qo'shilgan papkalar avtomat ko'rinadi.
   useEffect(() => {
     if (authState !== 'in') return;
-    let cancelled = false;
-    fetch('/api/folders')
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-        if (!cancelled) {
-          setFolders(Array.isArray(data.folders) ? data.folders : []);
-          setFoldersError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setFolders([]);
-          setFoldersError(e instanceof Error ? e.message : String(e));
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [authState]);
+    fetchFolders(false);
+    const id = setInterval(() => fetchFolders(true), 20000);
+    return () => clearInterval(id);
+  }, [authState, fetchFolders]);
 
   const handleLogout = async () => {
     try {

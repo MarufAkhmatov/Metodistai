@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Minus, UserPlus, FileText, FileSpreadsheet,
   ChevronRight, ChevronLeft, Eye, Download, Loader2, Folder,
@@ -44,35 +44,47 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
 
   const folderName = activeFolder?.name ?? null;
 
-  useEffect(() => {
-    if (!folderName) {
-      setDocs(null);
-      setDocsError(null);
-      return;
-    }
-    let cancelled = false;
-    setDocsLoading(true);
-    setDocsError(null);
-    setSelectedDoc(null);
-    fetch(`/api/folders/${encodeURIComponent(folderName)}/documents`)
-      .then(async (res) => {
+  const fetchDocs = useCallback(
+    async (silent: boolean) => {
+      if (!folderName) {
+        setDocs(null);
+        setDocsError(null);
+        return;
+      }
+      if (!silent) {
+        setDocsLoading(true);
+        setDocsError(null);
+      }
+      try {
+        const res = await fetch(`/api/folders/${encodeURIComponent(folderName)}/documents`);
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-        if (!cancelled) setDocs(data as FolderDocuments);
-      })
-      .catch((e) => {
-        if (!cancelled) {
+        setDocs(data as FolderDocuments);
+        if (silent) setDocsError(null);
+      } catch (e) {
+        if (!silent) {
           setDocs(null);
           setDocsError(e instanceof Error ? e.message : String(e));
         }
-      })
-      .finally(() => {
-        if (!cancelled) setDocsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [folderName]);
+      } finally {
+        if (!silent) setDocsLoading(false);
+      }
+    },
+    [folderName]
+  );
+
+  // Tanlangan papka o'zgarganda — to'liq yuklash; so'ng har 20s da jim yangilash
+  // (yangi qo'shilgan hujjatlar avtomat ko'rinadi).
+  useEffect(() => {
+    setSelectedDoc(null);
+    fetchDocs(false);
+  }, [fetchDocs]);
+
+  useEffect(() => {
+    if (!folderName) return;
+    const id = setInterval(() => fetchDocs(true), 20000);
+    return () => clearInterval(id);
+  }, [folderName, fetchDocs]);
 
   const openDoc = (name: string) => {
     if (!folderName) return;

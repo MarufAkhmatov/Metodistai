@@ -11,6 +11,12 @@ import { spawn } from 'node:child_process';
 import { existsSync, statSync, readdirSync } from 'node:fs';
 import process from 'node:process';
 import path from 'node:path';
+import {
+  indexKnowledgeBase,
+  queryKnowledgeBase,
+  startKnowledgeWatcher,
+  getRagStatus,
+} from './rag.mjs';
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
@@ -221,6 +227,10 @@ app.post('/api/logout', (req, res) => {
 
 app.get('/api/me', requireAuth, (req, res) => {
   res.json({ email: req.user.email });
+});
+
+app.get('/api/rag/status', requireAuth, (_req, res) => {
+  res.json(getRagStatus());
 });
 
 app.get('/api/health', (_req, res) => {
@@ -463,8 +473,24 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
     return;
   }
 
+  let ragContext = '';
+  if (message) {
+    const rag = await queryKnowledgeBase(AGENT_DIR, message);
+    if (rag && Array.isArray(rag.chunks) && rag.chunks.length > 0) {
+      const excerpts = rag.chunks
+        .map((c, i) => `[${i + 1}] (${c.rel_path})\n${c.text}`)
+        .join('\n\n');
+      ragContext =
+        `\n\n--- Bilim bazasidan tegishli parchalar (avtomatik qidiruv natijasi) ---\n` +
+        `${excerpts}\n` +
+        `--- Parchalar tugadi. Bular dastlabki yo'l-yo'riq; aniq audit uchun kerakli ` +
+        `fayllarni to'liq ochib o'qing. ---`;
+    }
+  }
+
   const promptParts = [];
   if (message) promptParts.push(message);
+  if (ragContext) promptParts.push(ragContext);
   if (fileText) {
     promptParts.push(`\n\n--- Biriktirilgan fayl: ${fileName} ---\n${fileText}\n--- Fayl tugadi ---`);
   }
@@ -507,5 +533,9 @@ app.listen(PORT, () => {
     console.warn('[metodistai] WARNING: Autentifikatsiya sozlanmagan — .env faylida AUTH_EMAIL, AUTH_PASSWORD_HASH, SESSION_SECRET kerak. Sayt kirishni rad etadi.');
   } else {
     console.log(`[metodistai] auth enabled for: ${AUTH_EMAIL}`);
+  }
+  if (!dirError) {
+    indexKnowledgeBase(AGENT_DIR);
+    startKnowledgeWatcher(AGENT_DIR);
   }
 });
