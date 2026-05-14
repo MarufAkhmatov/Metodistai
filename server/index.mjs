@@ -152,7 +152,7 @@ app.get('/api/health', (_req, res) => {
 
 function runClaude(prompt, sessionId) {
   return new Promise((resolve, reject) => {
-    const args = ['-p', prompt, '--output-format', 'json', '--add-dir', AGENT_DIR];
+    const args = ['-p', '--output-format', 'json', '--add-dir', AGENT_DIR];
     if (sessionId) {
       args.unshift('--resume', sessionId);
     }
@@ -162,6 +162,10 @@ function runClaude(prompt, sessionId) {
       shell: process.platform === 'win32',
       windowsHide: true,
     });
+
+    child.stdin.on('error', () => {});
+    child.stdin.write(prompt);
+    child.stdin.end();
 
     let stdout = '';
     let stderr = '';

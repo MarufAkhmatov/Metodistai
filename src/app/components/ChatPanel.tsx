@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MessageCircle, X, Send, Loader2, Paperclip, LogOut } from 'lucide-react';
+import { MessageCircle, X, Send, Loader2, Paperclip, LogOut, Maximize2, Minimize2, Copy, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -33,10 +33,12 @@ function formatSize(bytes: number): string {
 
 export function ChatPanel({ onLogout }: ChatPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [input, setInput] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [messages, setMessages] = useState<Message[]>(() => loadHistory());
   const [isSending, setIsSending] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -151,6 +153,45 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
     setMessages([]);
   };
 
+  const copyMessage = async (id: string, text: string) => {
+    const el = document.querySelector(`[data-msg-id="${id}"]`);
+    const html = el ? (el as HTMLElement).innerHTML : '';
+
+    let ok = false;
+    try {
+      if (html && typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([text], { type: 'text/plain' }),
+          }),
+        ]);
+        ok = true;
+      }
+    } catch {}
+
+    if (!ok) {
+      try {
+        await navigator.clipboard.writeText(text);
+        ok = true;
+      } catch {}
+    }
+
+    if (!ok) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch {}
+      document.body.removeChild(ta);
+    }
+
+    setCopiedId(id);
+    setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500);
+  };
+
   return (
     <>
       {!isOpen && (
@@ -164,7 +205,13 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
       )}
 
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-[120] w-[min(520px,calc(100vw-2rem))] h-[min(680px,calc(100vh-3rem))] bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden">
+        <div
+          className={
+            isExpanded
+              ? 'fixed inset-4 z-[120] bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden'
+              : 'fixed bottom-6 right-6 z-[120] w-[min(520px,calc(100vw-2rem))] h-[min(680px,calc(100vh-3rem))] bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden'
+          }
+        >
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-gradient-to-r from-emerald-900/30 to-transparent">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -190,6 +237,14 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
                   <LogOut size={16} />
                 </button>
               )}
+              <button
+                onClick={() => setIsExpanded((v) => !v)}
+                className="text-white/60 hover:text-white p-1 rounded"
+                aria-label={isExpanded ? 'Kichraytirish' : 'Kattalashtirish'}
+                title={isExpanded ? 'Kichraytirish' : 'Kattalashtirish'}
+              >
+                {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </button>
               <button
                 onClick={() => setIsOpen(false)}
                 className="text-white/60 hover:text-white p-1 rounded"
@@ -226,7 +281,28 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
                   }
                 >
                   {m.role === 'assistant' ? (
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                    <>
+                      <div data-msg-id={m.id}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                      </div>
+                      <div className="flex justify-end mt-1.5 -mb-0.5">
+                        <button
+                          onClick={() => copyMessage(m.id, m.text)}
+                          className="text-white/40 hover:text-white/80 text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors"
+                          title="Nusxa olish"
+                        >
+                          {copiedId === m.id ? (
+                            <>
+                              <Check size={12} /> Nusxalandi
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={12} /> Nusxa olish
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </>
                   ) : (
                     m.text
                   )}
