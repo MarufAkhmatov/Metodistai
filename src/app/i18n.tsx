@@ -40,10 +40,6 @@ const uz: Translations = {
   'nav.metodist': 'Metodist',
   'nav.workflow': 'Workflow',
   'nav.pages': 'Sahifalar',
-  // workflow page
-  'workflow.title': 'AI-Workflow sahifasi',
-  'workflow.placeholder':
-    "Bu sahifa tayyorlanmoqda. AI-Workflow loyihasining kodi qo'shilgach, shu yerda ko'rinadi.",
   // carousel
   'carousel.file': 'fayl',
   'carousel.noDocuments': 'Hujjat yoʻq',
@@ -132,10 +128,6 @@ const ru: Translations = {
   'nav.metodist': 'Методист',
   'nav.workflow': 'Workflow',
   'nav.pages': 'Страницы',
-  // workflow page
-  'workflow.title': 'Страница AI-Workflow',
-  'workflow.placeholder':
-    'Эта страница в подготовке. После добавления кода проекта AI-Workflow он появится здесь.',
   // carousel
   'carousel.file': 'файлов',
   'carousel.noDocuments': 'Нет документов',
@@ -224,10 +216,6 @@ const en: Translations = {
   'nav.metodist': 'Metodist',
   'nav.workflow': 'Workflow',
   'nav.pages': 'Pages',
-  // workflow page
-  'workflow.title': 'AI-Workflow page',
-  'workflow.placeholder':
-    'This page is being prepared. Once the AI-Workflow project code is added, it will appear here.',
   // carousel
   'carousel.file': 'files',
   'carousel.noDocuments': 'No documents',

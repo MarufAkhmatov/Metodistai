@@ -54,39 +54,33 @@ bulutli xizmati. Chatga savol bersangiz, javob shu yerdan keladi. Lekin:
 
 ## Sahifalar (routing) — Metodist va AI-Workflow
 
-Sayt endi ikki sahifali. `react-router` orqali URL marshruti:
+Sayt ikki sahifali. `react-router` orqali URL marshruti:
 
-- `/` — **Metodist** (1-sahifa): joriy dashboard, carousel, chat.
-- `/workflow` — **AI-Workflow** (2-sahifa).
+- `/` — **Metodist** (1-sahifa): dashboard, carousel, chat.
+- `/workflow` — **AI-Workflow** (2-sahifa): workflow editor / node engine.
 
 Header'da ikkala sahifa orasida o'tish uchun navigatsiya tugmalari bor
 (mobil menyuda ham "Sahifalar" bo'limi). Har ikkala sahifa **bir xil login
-tizimi** ortida.
+tizimi** ortida. 2-sahifa lazy-load qilinadi (alohida bundle).
 
-### AI-Workflow kodini qo'shish
+### AI-Workflow kodi
 
-2-sahifa hozircha vaqtinchalik (placeholder) — `src/app/pages/WorkflowPage.tsx`.
-AI-Workflow (<https://github.com/MarufAkhmatov/AI-Workflow>) alohida loyiha
-bo'lgani uchun, uning kodi shu repozitoriyga qo'shilishi kerak (sayt yagona
-ilova sifatida quriladi). Qadamlar:
+AI-Workflow (<https://github.com/MarufAkhmatov/AI-Workflow>) loyihasi shu
+Figma Make shabloni asosida qurilgani uchun bog'lanish to'g'ridan-to'g'ri
+bo'ldi — uning komponentlari `src/app/workflow/` papkasida:
 
-1. AI-Workflow loyihasining `src/` papkasidagi komponentlarni shu loyihaning
-   `src/app/workflow/` papkasiga nusxalang (papkani yarating).
-2. AI-Workflow `package.json` dagi kerakli paketlarni bu loyihaga o'rnating:
-   `npm install <paket nomi>`.
-3. `src/app/pages/WorkflowPage.tsx` ni tahrirlab, AI-Workflow asosiy
-   komponentini import qiling, masalan:
-   ```tsx
-   import WorkflowApp from '../workflow/App';
-   export default function WorkflowPage() {
-     return <WorkflowApp />;
-   }
-   ```
-4. Stil to'qnashuvi bo'lsa (ikki loyihaning global CSS'lari) — AI-Workflow
-   stillarini `workflow/` ichida lokal saqlang yoki sinflarni nomlang.
+- `WorkflowEditor.tsx` — sahifa asosiy komponenti
+- `NodeEngine.tsx` — workflow tugunlari (node) canvas'i
+- `ChatPanel.tsx` — workflow ichidagi chat paneli (statik UI)
 
-Kodni qo'shib commit qilganingizdan keyin ayting — qolgan ulashni
-(import, stil izolyatsiyasi, build) men sozlab beraman.
+`src/app/pages/WorkflowPage.tsx` shu `WorkflowEditor` ni ko'rsatadi.
+Stillar (`src/styles/`) va `ui/` komponentlar ikkala loyihada bir xil
+bo'lgani uchun qo'shimcha paket yoki CSS kerak bo'lmadi.
+
+AI-Workflow loyihasi yangilanganda: o'sha uchta faylni
+`src/app/workflow/` ga qayta nusxalang (`WorkflowEditor.tsx` da ildiz
+`div` ni `absolute inset-0` qilib qoldiring — sahifa ichiga joylashishi
+uchun).
 
 ## ASUS Windows kompyuteringizda o'rnatish
 
