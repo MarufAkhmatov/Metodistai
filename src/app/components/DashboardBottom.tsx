@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  Plus, Minus, UserPlus, Info, FileText, FileSpreadsheet,
+  Plus, Minus, UserPlus, FileText, FileSpreadsheet,
   ChevronRight, ChevronLeft, Eye, Download, Loader2, Folder,
   Maximize2, Minimize2,
 } from 'lucide-react';
@@ -87,6 +87,25 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
     a.remove();
   };
 
+  // Expanded folder grows in real size (not scaled) so the document list shows more rows.
+  const cardW = isExpanded ? 1000 : 500;
+  const cardH = isExpanded ? 645 : 340;
+  const folderPath = `M 24 0 L 120 0 Q 144 0 156 12 L 168 24 Q 180 36 204 36 L ${cardW - 24} 36 Q ${cardW} 36 ${cardW} 60 L ${cardW} ${cardH - 24} Q ${cardW} ${cardH} ${cardW - 24} ${cardH} L 24 ${cardH} Q 0 ${cardH} 0 ${cardH - 24} L 0 24 Q 0 0 24 0 Z`;
+
+  // Decorative file cards behind the folder show the top 3 real documents (PDFs first).
+  const topDocs = docs
+    ? [...docs.documents]
+        .sort((a, b) => {
+          const ap = a.format.toLowerCase() === 'pdf' ? 0 : 1;
+          const bp = b.format.toLowerCase() === 'pdf' ? 0 : 1;
+          if (ap !== bp) return ap - bp;
+          return a.name.localeCompare(b.name);
+        })
+        .slice(0, 3)
+    : [];
+  const fileCardWidths = [120, 130, 150];
+  const fileCardZ = ['z-0', 'z-10', 'z-20'];
+
   return (
     <div className="w-full max-w-[1400px] mx-auto px-4 md:px-6 grid grid-cols-1 lg:grid-cols-[1fr_500px_1fr] gap-4 items-end mt-[-60px] md:mt-[-60px] relative z-20">
       
@@ -163,57 +182,42 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
       {/* Center Panel (folder details) */}
       <div className={`relative h-[280px] sm:h-[320px] md:h-[460px] w-full flex flex-col justify-end translate-y-[10px] md:translate-y-[20px] ${isExpanded ? "z-[60]" : "z-30"}`}>
 
-        <div className={`absolute inset-x-0 bottom-0 flex justify-center origin-bottom transition-transform duration-300 ${isExpanded ? "scale-[1.5] sm:scale-[1.7] md:scale-[2]" : "scale-[0.75] sm:scale-[0.85] md:scale-100"}`}>
+        <div className="absolute inset-x-0 bottom-0 flex justify-center scale-[0.75] sm:scale-[0.85] md:scale-100 origin-bottom">
           {/* Background Dark Green Folder */}
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[500px] h-[410px] bg-[#16502b] rounded-[30px] z-[-1] shadow-[inset_0_2px_10px_rgba(255,255,255,0.1),0_-15px_30px_rgba(22,80,43,0.4)] border border-white/5" />
+          <div
+            className="absolute bottom-0 left-1/2 -translate-x-1/2 bg-[#16502b] rounded-[30px] z-[-1] shadow-[inset_0_2px_10px_rgba(255,255,255,0.1),0_-15px_30px_rgba(22,80,43,0.4)] border border-white/5"
+            style={{ width: cardW, height: cardH + 70 }}
+          />
 
-          {/* Vertical Files behind */}
-          <div className="absolute bottom-[300px] left-1/2 -translate-x-1/2 translate-y-[40%] w-[350px] h-[200px] z-0 flex items-end justify-center space-x-[-30px]">
-            {/* Incident File */}
-            <div className="w-[120px] h-[170px] bg-gradient-to-br from-[#16502b]/50 via-white/20 to-white/40 backdrop-blur-xl rounded-[15px] p-4 border-t border-l border-white/50 border-r border-b border-black/10 shadow-[inset_1px_1px_10px_rgba(255,255,255,0.4),0_10px_20px_rgba(0,0,0,0.3)] transition-transform hover:-translate-y-4 relative z-0 group">
-              <div className="absolute inset-0 bg-white/20 rounded-[15px] transition-colors group-hover:bg-white/30" />
-              <div className="text-[12px] font-medium text-white mb-0.5 relative z-10 drop-shadow-md">Incident</div>
-              <div className="text-[9px] text-white/90 relative z-10 drop-shadow-sm">Category</div>
-              <div className="mt-4 space-y-2 opacity-90 relative z-10">
-                <div className="h-1.5 w-full bg-white rounded-full shadow-[0_0_5px_rgba(255,255,255,0.5)]"></div>
-                <div className="h-1.5 w-3/4 bg-white rounded-full shadow-[0_0_5px_rgba(255,255,255,0.5)]"></div>
-              </div>
-            </div>
-            
-            {/* Vendor File */}
-            <div className="w-[130px] h-[170px] bg-gradient-to-br from-[#16502b]/50 via-white/20 to-white/40 backdrop-blur-xl rounded-[15px] p-4 border-t border-l border-white/50 border-r border-b border-black/10 shadow-[inset_1px_1px_10px_rgba(255,255,255,0.4),0_10px_20px_rgba(0,0,0,0.3)] transition-transform hover:-translate-y-4 relative z-10 group">
-              <div className="absolute inset-0 bg-white/20 rounded-[15px] transition-colors group-hover:bg-white/30" />
-              <div className="text-[12px] font-medium text-white mb-0.5 relative z-10 drop-shadow-md">Vendor</div>
-              <div className="text-[9px] text-white/90 relative z-10 drop-shadow-sm">Country<br/>US</div>
-              <div className="mt-4 space-y-2 opacity-90 relative z-10">
-                <div className="h-1.5 w-full bg-white rounded-full shadow-[0_0_5px_rgba(255,255,255,0.5)]"></div>
-                <div className="h-1.5 w-4/5 bg-white rounded-full shadow-[0_0_5px_rgba(255,255,255,0.5)]"></div>
-              </div>
-            </div>
-            
-            {/* DPA File */}
-            <div className="w-[150px] h-[170px] bg-gradient-to-br from-[#16502b]/50 via-white/20 to-white/40 backdrop-blur-xl rounded-[15px] p-4 border-t border-l border-white/50 border-r border-b border-black/10 shadow-[inset_1px_1px_10px_rgba(255,255,255,0.4),0_10px_20px_rgba(0,0,0,0.3)] transition-transform hover:-translate-y-4 relative z-20 group">
-              <div className="absolute inset-0 bg-white/20 rounded-[15px] transition-colors group-hover:bg-white/30" />
-              <div className="flex justify-between items-start relative z-10">
-                <div>
-                  <div className="text-[13px] font-medium text-white mb-1 drop-shadow-md">DPA</div>
-                  <div className="text-[10px] text-white/90 drop-shadow-sm">Dest<br/><span className="text-white font-medium">Data C.</span></div>
+          {/* Vertical Files behind — top 3 real documents */}
+          <div
+            className="absolute left-1/2 -translate-x-1/2 translate-y-[40%] w-[350px] h-[200px] z-0 flex items-end justify-center space-x-[-30px]"
+            style={{ bottom: cardH - 40 }}
+          >
+            {topDocs.map((doc, i) => (
+              <div
+                key={doc.name}
+                onClick={() => openDoc(doc.name)}
+                className={`h-[170px] bg-gradient-to-br from-[#16502b]/50 via-white/20 to-white/40 backdrop-blur-xl rounded-[15px] p-4 border-t border-l border-white/50 border-r border-b border-black/10 shadow-[inset_1px_1px_10px_rgba(255,255,255,0.4),0_10px_20px_rgba(0,0,0,0.3)] transition-transform hover:-translate-y-4 relative ${fileCardZ[i]} group cursor-pointer`}
+                style={{ width: fileCardWidths[i] }}
+                title={doc.name}
+              >
+                <div className="absolute inset-0 bg-white/20 rounded-[15px] transition-colors group-hover:bg-white/30" />
+                <div className="text-[11px] font-medium text-white mb-0.5 relative z-10 drop-shadow-md truncate">{doc.name}</div>
+                <div className="text-[9px] text-white/90 relative z-10 drop-shadow-sm uppercase">{doc.format}</div>
+                <div className="mt-4 space-y-2 opacity-90 relative z-10">
+                  <div className="h-1.5 w-full bg-white rounded-full shadow-[0_0_5px_rgba(255,255,255,0.5)]"></div>
+                  <div className="h-1.5 w-3/4 bg-white rounded-full shadow-[0_0_5px_rgba(255,255,255,0.5)]"></div>
                 </div>
-                <Info size={14} className="text-white/90 drop-shadow-sm" />
               </div>
-              <div className="mt-3 flex justify-between text-[9px] text-white/90 relative z-10 drop-shadow-sm">
-                <span>Status</span>
-                <span>Met</span>
-              </div>
-              <div className="mt-4 space-y-2 opacity-90 relative z-10">
-                <div className="h-2 w-full bg-white rounded-full shadow-[0_0_5px_rgba(255,255,255,0.5)]"></div>
-                <div className="h-2 w-full bg-white rounded-full shadow-[0_0_5px_rgba(255,255,255,0.5)]"></div>
-              </div>
-            </div>
+            ))}
           </div>
 
           {/* Main Green Card (Folder Shape) */}
-          <div className="relative w-[500px] h-[340px] z-10 drop-shadow-[0_-15px_40px_rgba(40,122,68,0.4)]">
+          <div
+            className="relative z-10 drop-shadow-[0_-15px_40px_rgba(40,122,68,0.4)]"
+            style={{ width: cardW, height: cardH }}
+          >
 
             {/* Expand / collapse toggle */}
             <button
@@ -226,12 +230,12 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
             </button>
 
             {/* Glass Background with exact path clipping */}
-            <div 
+            <div
               className="absolute inset-0 z-0 bg-gradient-to-br from-[#287a44]/80 via-[#287a44]/50 to-[#16502b]/70"
-              style={{ 
+              style={{
                 backdropFilter: 'blur(30px)',
                 WebkitBackdropFilter: 'blur(30px)',
-                clipPath: "path('M 24 0 L 120 0 Q 144 0 156 12 L 168 24 Q 180 36 204 36 L 476 36 Q 500 36 500 60 L 500 316 Q 500 340 476 340 L 24 340 Q 0 340 0 316 L 0 24 Q 0 0 24 0 Z')"
+                clipPath: `path('${folderPath}')`
               }}
             >
               {/* Neo morph inner noise/glow */}
@@ -240,9 +244,9 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
             </div>
 
             {/* SVG Border Layer */}
-            <svg className="absolute inset-0 w-[500px] h-[340px] pointer-events-none z-10" viewBox="0 0 500 340" fill="none" preserveAspectRatio="none">
-              <path 
-                d="M 24 0 L 120 0 Q 144 0 156 12 L 168 24 Q 180 36 204 36 L 476 36 Q 500 36 500 60 L 500 316 Q 500 340 476 340 L 24 340 Q 0 340 0 316 L 0 24 Q 0 0 24 0 Z" 
+            <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" viewBox={`0 0 ${cardW} ${cardH}`} fill="none" preserveAspectRatio="none">
+              <path
+                d={folderPath}
                 stroke="url(#morph-border)"
                 strokeWidth="2"
               />
@@ -257,7 +261,7 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
             </svg>
 
             {/* Content Layer */}
-            <div className="relative z-20 w-[500px] h-[340px] flex flex-col px-10 pb-8 pt-[52px]">
+            <div className="relative z-20 w-full h-full flex flex-col px-10 pb-8 pt-[52px]">
               {/* Header — folder metadata */}
               <div className="mb-5 relative z-10 pr-8">
                 <h1 className="text-xl font-medium text-white mb-1 transition-all duration-300 truncate">
