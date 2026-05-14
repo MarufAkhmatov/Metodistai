@@ -1,12 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import { Routes, Route, Navigate } from 'react-router';
 import { Loader2 } from 'lucide-react';
 import { Header } from "./components/Header";
-import { Carousel } from "./components/Carousel";
-import { DashboardBottom } from "./components/DashboardBottom";
 import { ChatPanel } from "./components/ChatPanel";
 import { LoginPage } from "./components/LoginPage";
+import DashboardPage from "./pages/DashboardPage";
 import type { FolderInfo } from "./types";
 import { useLang } from "./i18n";
+
+const WorkflowPage = lazy(() => import("./pages/WorkflowPage"));
 
 type AuthState = 'loading' | 'out' | 'in';
 
@@ -85,39 +87,42 @@ export default function App() {
     <div className="min-h-screen bg-[#030303] text-white overflow-hidden font-sans flex flex-col relative selection:bg-emerald-500/30 custom-scrollbar">
       {/* Background Ambient Glow */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[800px] h-[500px] bg-emerald-900/10 blur-[150px] rounded-full pointer-events-none z-0" />
-      
+
       <Header
         activeIndex={activeIndex}
         setActiveIndex={setActiveIndex}
         folders={folderNames}
       />
 
-      <div className="flex-1 relative flex flex-col pt-8 overflow-y-auto overflow-x-hidden">
-        <div className="flex-1 flex flex-col w-full md:-translate-y-[5%] transition-transform duration-500">
-          <div className="-translate-y-[1%]">
-            {folders === null ? (
-              <div className="relative w-full h-[300px] md:h-[400px] flex items-center justify-center">
-                <Loader2 className="animate-spin text-emerald-500" size={24} />
-              </div>
-            ) : foldersError ? (
-              <div className="relative w-full h-[300px] md:h-[400px] flex items-center justify-center">
-                <p className="text-red-300/80 text-sm text-center px-6 max-w-md">
-                  {t('app.foldersLoadError', { error: foldersError })}
-                </p>
-              </div>
-            ) : (
-              <Carousel
-                activeIndex={activeIndex}
-                setActiveIndex={setActiveIndex}
-                folders={folders}
-              />
-            )}
-          </div>
-          <div className="mt-auto w-full">
-            <DashboardBottom activeFolder={activeFolder} />
-          </div>
-        </div>
-      </div>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <DashboardPage
+              folders={folders}
+              foldersError={foldersError}
+              activeIndex={activeIndex}
+              setActiveIndex={setActiveIndex}
+              activeFolder={activeFolder}
+            />
+          }
+        />
+        <Route
+          path="/workflow"
+          element={
+            <Suspense
+              fallback={
+                <div className="flex-1 flex items-center justify-center">
+                  <Loader2 className="animate-spin text-emerald-500" size={24} />
+                </div>
+              }
+            >
+              <WorkflowPage />
+            </Suspense>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
 
       <ChatPanel onLogout={handleLogout} />
 

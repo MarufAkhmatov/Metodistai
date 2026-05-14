@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { NavLink } from 'react-router';
 import {
   Menu,
   Search,
@@ -25,6 +26,13 @@ interface HeaderProps {
 }
 
 const LANGS: Lang[] = ['uz', 'ru', 'en'];
+
+const navPillClass = ({ isActive }: { isActive: boolean }) =>
+  `px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+    isActive
+      ? 'bg-emerald-500/20 text-emerald-400'
+      : 'text-white/60 hover:text-white'
+  }`;
 
 export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: HeaderProps) {
   const { lang, setLang, t } = useLang();
@@ -65,12 +73,21 @@ export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: Header
             <button className="w-10 h-10 bg-white text-black rounded-full flex items-center justify-center font-bold text-xl">
               R
             </button>
-            <button 
+            <button
               onClick={() => setIsMobileMenuOpen(true)}
               className="w-10 h-10 bg-white/5 border border-white/10 rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"
             >
               <Menu size={18} />
             </button>
+            {/* Page navigation (desktop) */}
+            <nav className="hidden md:flex items-center bg-white/5 border border-white/10 rounded-full p-1">
+              <NavLink to="/" end className={navPillClass}>
+                {t('nav.metodist')}
+              </NavLink>
+              <NavLink to="/workflow" className={navPillClass}>
+                {t('nav.workflow')}
+              </NavLink>
+            </nav>
           </div>
 
           {/* Center Timeline Pill (Desktop only) */}
@@ -254,7 +271,41 @@ export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: Header
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col space-y-8">
-          
+
+          {/* Pages */}
+          <div className="flex flex-col space-y-4">
+            <h3 className="text-sm font-medium text-white/50 uppercase tracking-wider">{t('nav.pages')}</h3>
+            <div className="grid grid-cols-2 gap-2">
+              <NavLink
+                to="/"
+                end
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={({ isActive }) =>
+                  `px-4 py-3 text-sm rounded-xl transition-colors font-medium text-center ${
+                    isActive
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      : 'bg-white/5 text-white/70 hover:bg-white/10 border border-white/5'
+                  }`
+                }
+              >
+                {t('nav.metodist')}
+              </NavLink>
+              <NavLink
+                to="/workflow"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={({ isActive }) =>
+                  `px-4 py-3 text-sm rounded-xl transition-colors font-medium text-center ${
+                    isActive
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      : 'bg-white/5 text-white/70 hover:bg-white/10 border border-white/5'
+                  }`
+                }
+              >
+                {t('nav.workflow')}
+              </NavLink>
+            </div>
+          </div>
+
           {/* Language */}
           <div className="flex flex-col space-y-4">
             <h3 className="text-sm font-medium text-white/50 uppercase tracking-wider">{t('header.language')}</h3>

@@ -52,6 +52,42 @@ bulutli xizmati. Chatga savol bersangiz, javob shu yerdan keladi. Lekin:
 > bulutga chiqmasligi** shart bo'lsa, Claude o'rniga to'liq lokal model
 > (masalan Ollama) ishlatish kerak — buni alohida sozlash mumkin.
 
+## Sahifalar (routing) — Metodist va AI-Workflow
+
+Sayt endi ikki sahifali. `react-router` orqali URL marshruti:
+
+- `/` — **Metodist** (1-sahifa): joriy dashboard, carousel, chat.
+- `/workflow` — **AI-Workflow** (2-sahifa).
+
+Header'da ikkala sahifa orasida o'tish uchun navigatsiya tugmalari bor
+(mobil menyuda ham "Sahifalar" bo'limi). Har ikkala sahifa **bir xil login
+tizimi** ortida.
+
+### AI-Workflow kodini qo'shish
+
+2-sahifa hozircha vaqtinchalik (placeholder) — `src/app/pages/WorkflowPage.tsx`.
+AI-Workflow (<https://github.com/MarufAkhmatov/AI-Workflow>) alohida loyiha
+bo'lgani uchun, uning kodi shu repozitoriyga qo'shilishi kerak (sayt yagona
+ilova sifatida quriladi). Qadamlar:
+
+1. AI-Workflow loyihasining `src/` papkasidagi komponentlarni shu loyihaning
+   `src/app/workflow/` papkasiga nusxalang (papkani yarating).
+2. AI-Workflow `package.json` dagi kerakli paketlarni bu loyihaga o'rnating:
+   `npm install <paket nomi>`.
+3. `src/app/pages/WorkflowPage.tsx` ni tahrirlab, AI-Workflow asosiy
+   komponentini import qiling, masalan:
+   ```tsx
+   import WorkflowApp from '../workflow/App';
+   export default function WorkflowPage() {
+     return <WorkflowApp />;
+   }
+   ```
+4. Stil to'qnashuvi bo'lsa (ikki loyihaning global CSS'lari) — AI-Workflow
+   stillarini `workflow/` ichida lokal saqlang yoki sinflarni nomlang.
+
+Kodni qo'shib commit qilganingizdan keyin ayting — qolgan ulashni
+(import, stil izolyatsiyasi, build) men sozlab beraman.
+
 ## ASUS Windows kompyuteringizda o'rnatish
 
 ### 1. Node.js o'rnatish (agar yo'q bo'lsa)
