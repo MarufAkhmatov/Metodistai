@@ -1,8 +1,7 @@
-import React, { useState, useRef, useEffect, MouseEvent as ReactMouseEvent } from 'react';
-import { motion, useDragControls } from 'motion/react';
-import { Folder, Sparkles } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
+import { Sparkles } from 'lucide-react';
 import { NodeEngine } from './NodeEngine';
-import { ChatPanel } from './ChatPanel';
 
 export function WorkflowEditor() {
   const [activeTab, setActiveTab] = useState('Editor');

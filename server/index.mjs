@@ -122,6 +122,35 @@ function resolveUnderAgentDir(segment) {
   return resolved;
 }
 
+// rel_path (ichki papkali bo'lishi mumkin) ni AGENT_DIR ostida xavfsiz hal qiladi.
+function resolveRelUnderAgentDir(rel) {
+  if (typeof rel !== 'string' || !rel || rel.includes('\0')) return null;
+  const normalized = rel.replace(/\\/g, '/');
+  if (normalized.split('/').some((seg) => seg === '..')) return null;
+  const base = path.resolve(AGENT_DIR);
+  const resolved = path.resolve(base, normalized);
+  if (resolved !== base && !resolved.startsWith(base + path.sep)) return null;
+  return resolved;
+}
+
+// RAG chunk'larini yuqori darajadagi papka (departament) bo'yicha guruhlaydi.
+function groupKbMatches(chunks) {
+  const byFolder = new Map();
+  for (const c of chunks) {
+    const rel = String((c && c.rel_path) || '').replace(/\\/g, '/');
+    if (!rel) continue;
+    const slash = rel.indexOf('/');
+    const folder = slash >= 0 ? rel.slice(0, slash) : '(ildiz)';
+    const name = rel.slice(rel.lastIndexOf('/') + 1);
+    if (!byFolder.has(folder)) byFolder.set(folder, new Map());
+    byFolder.get(folder).set(rel, name);
+  }
+  return [...byFolder.entries()].map(([folder, files]) => ({
+    folder,
+    files: [...files.entries()].map(([relPath, name]) => ({ name, relPath })),
+  }));
+}
+
 function authConfigured() {
   return Boolean(AUTH_EMAIL && AUTH_PASSWORD_HASH && SESSION_SECRET);
 }
@@ -382,6 +411,32 @@ app.get('/api/folders/:folder/files/:name', requireAuth, (req, res) => {
   }
 });
 
+// Bilim bazasidagi faylni (ichki papkali rel_path) view yoki download qilish.
+const KB_VIEW_EXT = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.md']);
+app.get('/api/kb/file', requireAuth, (req, res) => {
+  const dirError = validateAgentDir();
+  if (dirError) {
+    res.status(500).json({ error: dirError });
+    return;
+  }
+  const rel = typeof req.query.path === 'string' ? req.query.path : '';
+  const filePath = resolveRelUnderAgentDir(rel);
+  if (
+    !filePath ||
+    !KB_VIEW_EXT.has(path.extname(filePath).toLowerCase()) ||
+    !existsSync(filePath) ||
+    !statSync(filePath).isFile()
+  ) {
+    res.status(404).json({ error: 'Fayl topilmadi.' });
+    return;
+  }
+  if (req.query.download === '1') {
+    res.download(filePath, path.basename(filePath));
+  } else {
+    res.sendFile(filePath);
+  }
+});
+
 function runClaude(prompt, sessionId) {
   return new Promise((resolve, reject) => {
     // --add-dir BERILMAYDI va cwd bo'sh papka — Claude normativ hujjatlarni
@@ -495,8 +550,12 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
   }
 
   let ragContext = '';
-  if (message) {
-    const rag = await queryKnowledgeBase(AGENT_DIR, message);
+  let kbMatches = [];
+  // RAG so'rovi: xabar + biriktirilgan fayl matni — yuklangan faylni KB bilan
+  // taqqoslash uchun ham tegishli parchalar topilsin.
+  const ragQuery = [message, fileText].filter(Boolean).join('\n').slice(0, 4000);
+  if (ragQuery.trim()) {
+    const rag = await queryKnowledgeBase(AGENT_DIR, ragQuery);
     if (rag && Array.isArray(rag.chunks) && rag.chunks.length > 0) {
       const excerpts = rag.chunks
         .map((c, i) => `[${i + 1}] (${c.rel_path})\n${c.text}`)
@@ -507,6 +566,7 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
         `--- Parchalar tugadi. Maxfiylik sababli asl fayllar sizga berilmaydi — ` +
         `faqat shu parchalarga asoslanib javob bering. Parcha yetarli bo'lmasa, ` +
         `foydalanuvchidan aniqlik so'rang. ---`;
+      kbMatches = groupKbMatches(rag.chunks);
     }
   }
 
@@ -551,7 +611,7 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
       "Bo'sh javob qaytdi.";
     // Claude javobidagi belgilarni asl qiymatlarga tiklab, foydalanuvchiga ko'rsatamiz.
     const reply = masker.unmask(rawReply);
-    res.json({ reply, sessionId: currentSessionId });
+    res.json({ reply, sessionId: currentSessionId, kbMatches });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[chat] error:', msg);
