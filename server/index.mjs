@@ -8,21 +8,33 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { PDFParse } from 'pdf-parse';
 import { spawn } from 'node:child_process';
-import { existsSync, statSync, readdirSync } from 'node:fs';
+import { existsSync, statSync, readdirSync, readFileSync, mkdirSync } from 'node:fs';
 import process from 'node:process';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   indexKnowledgeBase,
   queryKnowledgeBase,
   startKnowledgeWatcher,
   getRagStatus,
 } from './rag.mjs';
+import { createMasker, loadMaskTerms, resetMaskMap } from './mask.mjs';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
 const AGENT_DIR = process.env.METODIST_AGENT_DIR || '';
+// Claude CLI shu BO'SH papkada ishlaydi — normativ hujjatlarga (AGENT_DIR)
+// to'g'ridan-to'g'ri kira olmasligi uchun. Unga faqat maskalangan matn beriladi.
+const AGENT_WORKDIR = path.join(__dirname, '..', '.agent-workdir');
+// Claude faqat berilgan matnga javob bersin — fayl/tarmoq vositalari o'chirilgan.
+const DISALLOWED_TOOLS = 'Bash,Read,Edit,Write,Glob,Grep,WebFetch,WebSearch,NotebookEdit';
 const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+try {
+  mkdirSync(AGENT_WORKDIR, { recursive: true });
+} catch {}
 
 // --- Auth config ---
 const AUTH_EMAIL = (process.env.AUTH_EMAIL || '').trim().toLowerCase();
@@ -372,13 +384,21 @@ app.get('/api/folders/:folder/files/:name', requireAuth, (req, res) => {
 
 function runClaude(prompt, sessionId) {
   return new Promise((resolve, reject) => {
-    const args = ['-p', '--output-format', 'json', '--add-dir', AGENT_DIR];
+    // --add-dir BERILMAYDI va cwd bo'sh papka — Claude normativ hujjatlarni
+    // o'qiy olmaydi; --disallowedTools fayl/tarmoq vositalarini bloklaydi.
+    const args = [
+      '-p',
+      '--output-format',
+      'json',
+      '--disallowedTools',
+      DISALLOWED_TOOLS,
+    ];
     if (sessionId) {
       args.unshift('--resume', sessionId);
     }
 
     const child = spawn(CLAUDE_BIN, args, {
-      cwd: AGENT_DIR,
+      cwd: AGENT_WORKDIR,
       shell: process.platform === 'win32',
       windowsHide: true,
     });
@@ -442,6 +462,7 @@ function runClaude(prompt, sessionId) {
 
 app.post('/api/reset', requireAuth, (_req, res) => {
   currentSessionId = null;
+  resetMaskMap();
   res.json({ ok: true });
 });
 
@@ -481,29 +502,55 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
         .map((c, i) => `[${i + 1}] (${c.rel_path})\n${c.text}`)
         .join('\n\n');
       ragContext =
-        `\n\n--- Bilim bazasidan tegishli parchalar (avtomatik qidiruv natijasi) ---\n` +
+        `--- Bilim bazasidan tegishli parchalar (avtomatik qidiruv natijasi) ---\n` +
         `${excerpts}\n` +
-        `--- Parchalar tugadi. Bular dastlabki yo'l-yo'riq; aniq audit uchun kerakli ` +
-        `fayllarni to'liq ochib o'qing. ---`;
+        `--- Parchalar tugadi. Maxfiylik sababli asl fayllar sizga berilmaydi — ` +
+        `faqat shu parchalarga asoslanib javob bering. Parcha yetarli bo'lmasa, ` +
+        `foydalanuvchidan aniqlik so'rang. ---`;
     }
   }
 
-  const promptParts = [];
-  if (message) promptParts.push(message);
-  if (ragContext) promptParts.push(ragContext);
-  if (fileText) {
-    promptParts.push(`\n\n--- Biriktirilgan fayl: ${fileName} ---\n${fileText}\n--- Fayl tugadi ---`);
+  // CLAUDE.md yo'riqnomasini o'zimiz o'qib beramiz (Claude endi AGENT_DIR ga kira olmaydi).
+  let claudeMd = '';
+  const claudeMdPath = path.join(AGENT_DIR, 'CLAUDE.md');
+  if (existsSync(claudeMdPath)) {
+    try {
+      claudeMd = readFileSync(claudeMdPath, 'utf8');
+    } catch {}
   }
-  const prompt = promptParts.join('');
+
+  const contentParts = [];
+  if (claudeMd) {
+    contentParts.push(`--- Yo'riqnoma (CLAUDE.md) ---\n${claudeMd}\n--- Yo'riqnoma tugadi ---`);
+  }
+  if (message) contentParts.push(message);
+  if (ragContext) contentParts.push(ragContext);
+  if (fileText) {
+    contentParts.push(`--- Biriktirilgan fayl: ${fileName} ---\n${fileText}\n--- Fayl tugadi ---`);
+  }
+  const rawContent = contentParts.join('\n\n');
+
+  // Maxfiylik: matnni Claude (bulut) ga yuborishdan OLDIN maskalaymiz.
+  const masker = createMasker(loadMaskTerms());
+  const maskedContent = masker.mask(rawContent);
+  const privacyNote =
+    `\n\n--- MAXFIYLIK QOIDASI ---\n` +
+    `Yuqoridagi matndagi [MAXFIY_xxx], [RAQAM_xxx], [TELEFON_xxx], [EMAIL_xxx] ` +
+    `belgilari maxfiy ma'lumotlar o'rnida turibdi. Javobingizda ham AYNAN shu ` +
+    `belgilardan foydalaning — asl ism, raqam yoki qiymatni taxmin qilmang, ` +
+    `tiklamang yoki so'ramang.`;
+  const prompt = maskedContent + privacyNote;
 
   try {
     const result = await runClaude(prompt, currentSessionId);
     if (result && typeof result.session_id === 'string') {
       currentSessionId = result.session_id;
     }
-    const reply =
+    const rawReply =
       (result && typeof result.result === 'string' && result.result) ||
       "Bo'sh javob qaytdi.";
+    // Claude javobidagi belgilarni asl qiymatlarga tiklab, foydalanuvchiga ko'rsatamiz.
+    const reply = masker.unmask(rawReply);
     res.json({ reply, sessionId: currentSessionId });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -520,8 +567,9 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
 });
 
-app.listen(PORT, () => {
-  console.log(`[metodistai] backend listening on http://localhost:${PORT}`);
+// Faqat localhost (127.0.0.1) da tinglaydi — tarmoqdagi boshqa qurilmalar kira olmaydi.
+app.listen(PORT, '127.0.0.1', () => {
+  console.log(`[metodistai] backend listening on http://127.0.0.1:${PORT} (faqat localhost)`);
   console.log(`[metodistai] using CLI: ${CLAUDE_BIN}`);
   const dirError = validateAgentDir();
   if (dirError) {

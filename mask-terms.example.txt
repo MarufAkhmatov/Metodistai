@@ -1,0 +1,21 @@
+# Maxfiy atamalar ro'yxati — maskalash uchun.
+#
+# Bu fayldagi har bir atama (ism, familiya, tashkilot nomi, joy nomi va h.k.)
+# Claude (bulut) ga yuborilishidan oldin [MAXFIY_xxx] belgisiga almashtiriladi,
+# javob qaytgach asl holiga tiklanadi.
+#
+# Foydalanish:
+#   1. Bu faylni nusxalang:  copy mask-terms.example.txt mask-terms.txt
+#   2. mask-terms.txt ni notepad bilan oching va o'z maxfiy atamalaringizni yozing.
+#   3. Har bir atama alohida qatorda. # bilan boshlangan qatorlar izoh.
+#   4. Saqlang — server qayta ishga tushganda yangi ro'yxat o'qiladi.
+#
+# Eslatma: email, telefon raqamlari va uzun raqamli ketma-ketliklar (passport,
+# INN va h.k.) avtomatik aniqlanadi — ularni bu yerga yozish shart emas.
+# Bu yerga asosan ism va tashkilot nomlarini yozing.
+#
+# --- Namuna (o'zinikiga almashtiring) ---
+# Akmal Karimov
+# Dilnoza Rashidova
+# "Metodika Markazi" MChJ
+# 12-sonli maktab

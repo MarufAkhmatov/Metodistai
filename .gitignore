@@ -6,3 +6,7 @@ dist
 *.log
 __pycache__
 *.pyc
+# Maxfiy atamalar ro'yxati — hech qachon repozitoriyga tushmasin.
+mask-terms.txt
+# Claude CLI uchun bo'sh ishchi papka.
+.agent-workdir/

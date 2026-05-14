@@ -10,7 +10,9 @@ Original Figma loyihasi:
 ## Arxitektura
 
 ```
-Brauzer (Vite, port 5173)  ──/api/chat──▶  Node.js backend (port 3001)
+Brauzer (Vite, 127.0.0.1:5173) ──/api/chat──▶ Node.js backend (127.0.0.1:3001)
+                                                    │
+                                          maskalash (mask.mjs)
                                                     │
                                                     ▼
                                            `claude -p ...` (lokal CLI)
@@ -18,7 +20,37 @@ Brauzer (Vite, port 5173)  ──/api/chat──▶  Node.js backend (port 3001)
 
 - `src/app/components/ChatPanel.tsx` — chat oynasi (pastki o'ng burchakdagi tugma).
 - `server/index.mjs` — Express backend, `claude` CLI chaqiradi va javobni qaytaradi.
+- `server/mask.mjs` — maxfiylik qatlami (bulutga maskalangan matn ketadi).
+- `server/rag.mjs` + `scripts/rag/` — lokal bilim bazasi (offline embeddinglar).
 - `vite.config.ts` — `/api` so'rovlarni backendga proxy qiladi.
+
+## Maxfiylik — ma'lumotlaringiz qayerda
+
+Sayt to'liq sizning kompyuteringizda ishlaydi. Quyidagilar **hech qachon
+kompyuterdan tashqariga chiqmaydi**:
+
+- Normativ hujjatlardan matn ajratish — lokal.
+- Bilim bazasi (RAG) embeddinglari — `fastembed` orqali **offline**, internetsiz.
+  Vektorlar `AI Metodist Agent\.rag\` da saqlanadi.
+- Backend va sayt faqat `127.0.0.1` (localhost) da ishlaydi — bir Wi-Fi'dagi
+  boshqa qurilmalar kira olmaydi.
+
+**Bulutga (Anthropic) nima boradi:** Claude Code CLI — bu Anthropic'ning
+bulutli xizmati. Chatga savol bersangiz, javob shu yerdan keladi. Lekin:
+
+- Claude'ga matn yuborilishidan **oldin maskalanadi** (`server/mask.mjs`):
+  email, telefon, uzun raqamlar (passport/INN) avtomatik; ism va tashkilot
+  nomlari esa `mask-terms.txt` ro'yxatingiz bo'yicha. Ular `[MAXFIY_xxx]`
+  belgilariga almashtiriladi, javob qaytgach asl holiga tiklanadi —
+  Anthropic faqat belgilarni ko'radi.
+- Claude'ning **fayl o'qish vositalari o'chirilgan** (`--disallowedTools`) va
+  u bo'sh papkada ishlaydi — normativ hujjatlaringizga to'g'ridan-to'g'ri
+  kira olmaydi, faqat siz bergan (maskalangan) matnni ko'radi.
+
+> **Muhim cheklov:** maskalash — himoya chorasi, mutlaq kafolat emas.
+> `mask-terms.txt` ga kiritmagan ism/nomlar maskalanmaydi. Agar **hech narsa
+> bulutga chiqmasligi** shart bo'lsa, Claude o'rniga to'liq lokal model
+> (masalan Ollama) ishlatish kerak — buni alohida sozlash mumkin.
 
 ## ASUS Windows kompyuteringizda o'rnatish
 
@@ -144,7 +176,22 @@ pip install -r scripts/rag/requirements.txt
   bilan yozing (masalan `PYTHON_BIN=C:\Python312\python.exe`).
 - Vektor ma'lumotlari `AI Metodist Agent\.rag\` yashirin papkasida saqlanadi.
 
-### 8. Saytni ishga tushirish
+### 8. Maxfiy atamalar ro'yxatini sozlash
+
+Loyiha ildizida `mask-terms.example.txt` faylidan nusxa oling:
+
+```powershell
+Copy-Item mask-terms.example.txt mask-terms.txt
+notepad mask-terms.txt
+```
+
+Ichiga maskalanishi kerak bo'lgan ism, familiya, tashkilot nomlarini
+har birini alohida qatorga yozing va saqlang. Email/telefon/uzun raqamlar
+avtomatik aniqlanadi — ularni yozish shart emas. `mask-terms.txt`
+repozitoriyga tushmaydi (`.gitignore` da). Batafsil — yuqoridagi
+"Maxfiylik" bo'limiga qarang.
+
+### 9. Saytni ishga tushirish
 
 ```powershell
 npm run dev:all
