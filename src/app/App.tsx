@@ -1,16 +1,19 @@
 import { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Header } from "./components/Header";
-import { Carousel, FOLDERS } from "./components/Carousel";
+import { Carousel } from "./components/Carousel";
 import { DashboardBottom } from "./components/DashboardBottom";
 import { ChatPanel } from "./components/ChatPanel";
 import { LoginPage } from "./components/LoginPage";
+import type { FolderInfo } from "./types";
 
 type AuthState = 'loading' | 'out' | 'in';
 
 export default function App() {
   const [authState, setAuthState] = useState<AuthState>('loading');
-  const [activeIndex, setActiveIndex] = useState(5);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [folders, setFolders] = useState<FolderInfo[] | null>(null);
+  const [foldersError, setFoldersError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -26,6 +29,29 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (authState !== 'in') return;
+    let cancelled = false;
+    fetch('/api/folders')
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+        if (!cancelled) {
+          setFolders(Array.isArray(data.folders) ? data.folders : []);
+          setFoldersError(null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setFolders([]);
+          setFoldersError(e instanceof Error ? e.message : String(e));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authState]);
+
   const handleLogout = async () => {
     try {
       await fetch('/api/logout', { method: 'POST' });
@@ -33,8 +59,13 @@ export default function App() {
     setAuthState('out');
   };
 
-  const currentModIndex = ((activeIndex % FOLDERS.length) + FOLDERS.length) % FOLDERS.length;
-  const activeFolderName = FOLDERS[currentModIndex];
+  const folderList = folders ?? [];
+  const folderNames = folderList.map((f) => f.name);
+  const currentModIndex =
+    folderList.length > 0
+      ? ((activeIndex % folderList.length) + folderList.length) % folderList.length
+      : 0;
+  const activeFolder = folderList.length > 0 ? folderList[currentModIndex] : null;
 
   if (authState === 'loading') {
     return (
@@ -53,19 +84,35 @@ export default function App() {
       {/* Background Ambient Glow */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[800px] h-[500px] bg-emerald-900/10 blur-[150px] rounded-full pointer-events-none z-0" />
       
-      <Header 
-        activeIndex={activeIndex} 
-        setActiveIndex={setActiveIndex} 
-        folders={FOLDERS} 
+      <Header
+        activeIndex={activeIndex}
+        setActiveIndex={setActiveIndex}
+        folders={folderNames}
       />
-      
+
       <div className="flex-1 relative flex flex-col pt-8 overflow-y-auto overflow-x-hidden">
         <div className="flex-1 flex flex-col w-full md:-translate-y-[5%] transition-transform duration-500">
           <div className="-translate-y-[1%]">
-            <Carousel activeIndex={activeIndex} setActiveIndex={setActiveIndex} />
+            {folders === null ? (
+              <div className="relative w-full h-[300px] md:h-[400px] flex items-center justify-center">
+                <Loader2 className="animate-spin text-emerald-500" size={24} />
+              </div>
+            ) : foldersError ? (
+              <div className="relative w-full h-[300px] md:h-[400px] flex items-center justify-center">
+                <p className="text-red-300/80 text-sm text-center px-6 max-w-md">
+                  Papkalarni yuklab bo'lmadi: {foldersError}
+                </p>
+              </div>
+            ) : (
+              <Carousel
+                activeIndex={activeIndex}
+                setActiveIndex={setActiveIndex}
+                folders={folders}
+              />
+            )}
           </div>
           <div className="mt-auto w-full">
-            <DashboardBottom activeFolder={activeFolderName} />
+            <DashboardBottom activeFolder={activeFolder} />
           </div>
         </div>
       </div>

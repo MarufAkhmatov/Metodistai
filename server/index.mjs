@@ -8,7 +8,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { PDFParse } from 'pdf-parse';
 import { spawn } from 'node:child_process';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, statSync, readdirSync } from 'node:fs';
 import process from 'node:process';
 import path from 'node:path';
 
@@ -26,6 +26,55 @@ const TOKEN_TTL = '7d';
 const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const ALLOWED_EXT = new Set(['.pdf', '.docx', '.txt', '.md']);
+
+// Normativ hujjat sifatida sanaladigan fayl turlari (carousel/dashboard uchun).
+const DOC_EXT = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx']);
+const MAX_SCAN_DEPTH = 6;
+
+function isDocFile(name) {
+  return DOC_EXT.has(path.extname(name).toLowerCase());
+}
+
+function countDocsRecursive(dir, depth = 0) {
+  if (depth > MAX_SCAN_DEPTH) return 0;
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  let count = 0;
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    if (entry.isDirectory()) {
+      count += countDocsRecursive(path.join(dir, entry.name), depth + 1);
+    } else if (entry.isFile() && isDocFile(entry.name)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+// Bitta papka/fayl nomini AGENT_DIR ostida xavfsiz hal qiladi (path traversal'ni bloklaydi).
+function resolveUnderAgentDir(segment) {
+  if (
+    typeof segment !== 'string' ||
+    !segment ||
+    segment.includes('/') ||
+    segment.includes('\\') ||
+    segment.includes('\0') ||
+    segment === '.' ||
+    segment === '..'
+  ) {
+    return null;
+  }
+  const base = path.resolve(AGENT_DIR);
+  const resolved = path.resolve(base, segment);
+  if (resolved !== base && !resolved.startsWith(base + path.sep)) {
+    return null;
+  }
+  return resolved;
+}
 
 function authConfigured() {
   return Boolean(AUTH_EMAIL && AUTH_PASSWORD_HASH && SESSION_SECRET);
@@ -148,6 +197,130 @@ app.get('/api/me', requireAuth, (req, res) => {
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
+});
+
+// AGENT_DIR ichidagi, kamida bitta normativ hujjati bor papkalar ro'yxati.
+app.get('/api/folders', requireAuth, (_req, res) => {
+  const dirError = validateAgentDir();
+  if (dirError) {
+    res.status(500).json({ error: dirError });
+    return;
+  }
+  let entries;
+  try {
+    entries = readdirSync(AGENT_DIR, { withFileTypes: true });
+  } catch (e) {
+    res.status(500).json({ error: `Papkani o'qib bo'lmadi: ${e instanceof Error ? e.message : String(e)}` });
+    return;
+  }
+  const folders = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+    const full = path.join(AGENT_DIR, entry.name);
+    const documentCount = countDocsRecursive(full);
+    if (documentCount === 0) continue;
+    let subfolderCount = 0;
+    try {
+      subfolderCount = readdirSync(full, { withFileTypes: true }).filter(
+        (s) => s.isDirectory() && !s.name.startsWith('.')
+      ).length;
+    } catch {}
+    let modifiedAt = null;
+    try {
+      modifiedAt = statSync(full).mtime.toISOString();
+    } catch {}
+    folders.push({ name: entry.name, documentCount, subfolderCount, modifiedAt });
+  }
+  folders.sort((a, b) => a.name.localeCompare(b.name));
+  res.json({ folders });
+});
+
+// Tanlangan papkadagi normativ hujjatlar va ichki papkalar.
+app.get('/api/folders/:folder/documents', requireAuth, (req, res) => {
+  const dirError = validateAgentDir();
+  if (dirError) {
+    res.status(500).json({ error: dirError });
+    return;
+  }
+  const folderPath = resolveUnderAgentDir(req.params.folder);
+  if (!folderPath || !existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
+    res.status(404).json({ error: 'Papka topilmadi.' });
+    return;
+  }
+  let entries;
+  try {
+    entries = readdirSync(folderPath, { withFileTypes: true });
+  } catch (e) {
+    res.status(500).json({ error: `Papkani o'qib bo'lmadi: ${e instanceof Error ? e.message : String(e)}` });
+    return;
+  }
+  const documents = [];
+  const subfolders = [];
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const full = path.join(folderPath, entry.name);
+    if (entry.isDirectory()) {
+      subfolders.push({ name: entry.name, documentCount: countDocsRecursive(full) });
+    } else if (entry.isFile() && isDocFile(entry.name)) {
+      let st;
+      try {
+        st = statSync(full);
+      } catch {
+        continue;
+      }
+      documents.push({
+        name: entry.name,
+        format: path.extname(entry.name).toLowerCase().slice(1),
+        sizeBytes: st.size,
+        modifiedAt: st.mtime.toISOString(),
+      });
+    }
+  }
+  documents.sort((a, b) => a.name.localeCompare(b.name));
+  subfolders.sort((a, b) => a.name.localeCompare(b.name));
+  let modifiedAt = null;
+  try {
+    modifiedAt = statSync(folderPath).mtime.toISOString();
+  } catch {}
+  res.json({ folder: req.params.folder, modifiedAt, documents, subfolders });
+});
+
+// Hujjatni view (inline) yoki download (?download=1) qilish.
+app.get('/api/folders/:folder/files/:name', requireAuth, (req, res) => {
+  const dirError = validateAgentDir();
+  if (dirError) {
+    res.status(500).json({ error: dirError });
+    return;
+  }
+  const folderPath = resolveUnderAgentDir(req.params.folder);
+  if (!folderPath) {
+    res.status(400).json({ error: "Noto'g'ri papka nomi." });
+    return;
+  }
+  const fileName = req.params.name;
+  if (
+    typeof fileName !== 'string' ||
+    !fileName ||
+    fileName.includes('/') ||
+    fileName.includes('\\') ||
+    fileName.includes('\0') ||
+    fileName === '.' ||
+    fileName === '..' ||
+    !isDocFile(fileName)
+  ) {
+    res.status(400).json({ error: "Noto'g'ri fayl nomi." });
+    return;
+  }
+  const filePath = path.join(folderPath, fileName);
+  if (!existsSync(filePath) || !statSync(filePath).isFile()) {
+    res.status(404).json({ error: 'Fayl topilmadi.' });
+    return;
+  }
+  if (req.query.download === '1') {
+    res.download(filePath, fileName);
+  } else {
+    res.sendFile(filePath);
+  }
 });
 
 function runClaude(prompt, sessionId) {

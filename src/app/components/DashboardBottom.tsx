@@ -1,9 +1,89 @@
-import { useState } from 'react';
-import { Plus, Minus, UserPlus, Info, FileText, CheckCircle2, ChevronRight, ChevronLeft } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import {
+  Plus, Minus, UserPlus, Info, FileText, FileSpreadsheet,
+  ChevronRight, ChevronLeft, Eye, Download, Loader2, Folder,
+} from 'lucide-react';
+import type { FolderInfo, FolderDocuments } from '../types';
 
-export function DashboardBottom({ activeFolder = "Compliance" }: { activeFolder?: string }) {
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function docIconFor(format: string) {
+  const f = format.toLowerCase();
+  if (f === 'pdf') return { Icon: FileText, color: 'text-red-300', bg: 'bg-red-500/15' };
+  if (f === 'xls' || f === 'xlsx') return { Icon: FileSpreadsheet, color: 'text-emerald-300', bg: 'bg-emerald-500/15' };
+  return { Icon: FileText, color: 'text-blue-300', bg: 'bg-blue-500/15' };
+}
+
+function fileUrl(folder: string, name: string, download = false): string {
+  const base = `/api/folders/${encodeURIComponent(folder)}/files/${encodeURIComponent(name)}`;
+  return download ? `${base}?download=1` : base;
+}
+
+export function DashboardBottom({ activeFolder = null }: { activeFolder?: FolderInfo | null }) {
   const [isLeftOpen, setIsLeftOpen] = useState(false);
   const [isRightOpen, setIsRightOpen] = useState(false);
+  const [docs, setDocs] = useState<FolderDocuments | null>(null);
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [docsError, setDocsError] = useState<string | null>(null);
+  const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
+
+  const folderName = activeFolder?.name ?? null;
+
+  useEffect(() => {
+    if (!folderName) {
+      setDocs(null);
+      setDocsError(null);
+      return;
+    }
+    let cancelled = false;
+    setDocsLoading(true);
+    setDocsError(null);
+    setSelectedDoc(null);
+    fetch(`/api/folders/${encodeURIComponent(folderName)}/documents`)
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+        if (!cancelled) setDocs(data as FolderDocuments);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setDocs(null);
+          setDocsError(e instanceof Error ? e.message : String(e));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDocsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [folderName]);
+
+  const openDoc = (name: string) => {
+    if (!folderName) return;
+    window.open(fileUrl(folderName, name), '_blank', 'noopener');
+  };
+
+  const downloadDoc = (name: string) => {
+    if (!folderName) return;
+    const a = document.createElement('a');
+    a.href = fileUrl(folderName, name, true);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
 
   return (
     <div className="w-full max-w-[1400px] mx-auto px-4 md:px-6 grid grid-cols-1 lg:grid-cols-[1fr_500px_1fr] gap-4 items-end mt-[-60px] md:mt-[-60px] relative z-20">
@@ -166,10 +246,16 @@ export function DashboardBottom({ activeFolder = "Compliance" }: { activeFolder?
 
             {/* Content Layer */}
             <div className="relative z-20 w-[500px] h-[340px] flex flex-col px-10 pb-8 pt-[30px]">
-              {/* Header */}
+              {/* Header — folder metadata */}
               <div className="mb-5 relative z-10">
-                <h1 className="text-xl font-medium text-white mb-1 transition-all duration-300">{activeFolder}</h1>
-                <p className="text-sm text-emerald-100/60">Recent activity</p>
+                <h1 className="text-xl font-medium text-white mb-1 transition-all duration-300 truncate">
+                  {activeFolder?.name ?? '—'}
+                </h1>
+                <p className="text-sm text-emerald-100/60">
+                  {activeFolder
+                    ? `${activeFolder.documentCount} hujjat · ${activeFolder.subfolderCount} ichki papka · oxirgi o'zgarish ${formatDate(activeFolder.modifiedAt)}`
+                    : 'Papka tanlanmagan'}
+                </p>
               </div>
 
             {/* Progress Slider */}
@@ -185,39 +271,92 @@ export function DashboardBottom({ activeFolder = "Compliance" }: { activeFolder?
               </div>
             </div>
 
-            {/* Activity Cards */}
-            <div className="space-y-3 relative z-10 flex-1 overflow-y-auto min-h-0 pr-2 custom-scrollbar">
-              {/* File Card */}
-              <div className="w-full bg-white/[0.06] hover:bg-white/[0.08] transition-colors border border-white/10 rounded-2xl p-4 flex items-center cursor-pointer">
-                <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-white mr-4 shrink-0">
-                  <FileText size={18} />
+            {/* Document list */}
+            <div className="space-y-2 relative z-10 flex-1 overflow-y-auto min-h-0 pr-2 custom-scrollbar">
+              {docsLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 size={20} className="animate-spin text-emerald-300" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-white truncate">GDPR Compliance Report.pdf.pdf</div>
-                  <div className="text-xs text-white/50 truncate">compliance@oags.legal</div>
-                </div>
-              </div>
+              )}
 
-              {/* Meeting Card */}
-              <div className="w-full bg-white/[0.06] hover:bg-white/[0.08] transition-colors border border-white/10 rounded-2xl p-4 flex items-center cursor-pointer">
-                 <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center mr-4 shrink-0">
-                   {/* Google Meet placeholder icon */}
-                   <div className="w-0 h-0 border-l-[6px] border-r-[6px] border-b-[10px] border-transparent border-b-blue-400 rotate-90" />
-                 </div>
-                 <div className="min-w-0 flex-1">
-                   <div className="text-sm font-medium text-white truncate">Audit Committee Review</div>
-                   <div className="flex items-center mt-1">
-                     <div className="flex items-center -space-x-1.5 mr-2">
-                       <img src="https://images.unsplash.com/photo-1672675611932-9d722165f0ad?w=64&h=64&fit=crop&crop=faces" className="w-4 h-4 rounded-full border border-black" alt="User" />
-                       <img src="https://images.unsplash.com/photo-1614023342667-6f060e9d1e04?w=64&h=64&fit=crop&crop=faces" className="w-4 h-4 rounded-full border border-black" alt="User" />
-                     </div>
-                     <div className="text-[10px] text-white/50">Internal Board</div>
-                   </div>
-                 </div>
-                 <div className="text-[10px] font-medium text-emerald-400 bg-emerald-900/40 px-2 py-1 rounded-md">
-                   09:00 AM
-                 </div>
-              </div>
+              {!docsLoading && docsError && (
+                <div className="text-xs text-red-300/80 bg-red-900/20 border border-red-500/20 rounded-xl p-3">
+                  {docsError}
+                </div>
+              )}
+
+              {!docsLoading && !docsError && docs && (
+                <>
+                  {docs.subfolders.map((sf) => (
+                    <div
+                      key={`sf-${sf.name}`}
+                      className="w-full bg-white/[0.03] border border-white/5 rounded-2xl p-3 flex items-center"
+                    >
+                      <div className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center text-white/50 mr-3 shrink-0">
+                        <Folder size={16} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-white/80 truncate">{sf.name}</div>
+                        <div className="text-xs text-white/40">{sf.documentCount} hujjat</div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {docs.documents.map((doc) => {
+                    const { Icon, color, bg } = docIconFor(doc.format);
+                    const isSelected = selectedDoc === doc.name;
+                    return (
+                      <div
+                        key={doc.name}
+                        onClick={() => setSelectedDoc(isSelected ? null : doc.name)}
+                        className={`w-full border rounded-2xl p-3 flex items-center cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'bg-emerald-500/15 border-emerald-400/40'
+                            : 'bg-white/[0.06] hover:bg-white/[0.08] border-white/10'
+                        }`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center mr-3 shrink-0`}>
+                          <Icon size={16} className={color} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium text-white truncate">{doc.name}</div>
+                          <div className="text-xs text-white/50">
+                            {doc.format.toUpperCase()} · {formatSize(doc.sizeBytes)}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 ml-2 shrink-0">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openDoc(doc.name); }}
+                            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/15 flex items-center justify-center text-white/70 hover:text-white transition-colors"
+                            title="Ochish"
+                          >
+                            <Eye size={15} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); downloadDoc(doc.name); }}
+                            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/15 flex items-center justify-center text-white/70 hover:text-white transition-colors"
+                            title="Yuklab olish"
+                          >
+                            <Download size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {docs.documents.length === 0 && docs.subfolders.length === 0 && (
+                    <div className="text-xs text-white/40 text-center py-8">
+                      Bu papkada normativ hujjat yo'q.
+                    </div>
+                  )}
+                </>
+              )}
+
+              {!docsLoading && !docsError && !docs && (
+                <div className="text-xs text-white/40 text-center py-8">
+                  Papka tanlanmagan.
+                </div>
+              )}
             </div>
             </div>
           </div>
