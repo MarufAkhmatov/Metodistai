@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MessageCircle, X, Send, Loader2, Paperclip, LogOut, Maximize2, Minimize2, Copy, Check } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useLang } from '../i18n';
 
 type ChatPanelProps = {
   onLogout?: () => void;
@@ -32,6 +33,7 @@ function formatSize(bytes: number): string {
 }
 
 export function ChatPanel({ onLogout }: ChatPanelProps) {
+  const { t } = useLang();
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [input, setInput] = useState('');
@@ -70,7 +72,7 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
         {
           id: crypto.randomUUID(),
           role: 'error',
-          text: `Fayl juda katta (${formatSize(f.size)}). Limit: 10 MB.`,
+          text: t('chat.fileTooLarge', { size: formatSize(f.size) }),
         },
       ]);
       e.target.value = '';
@@ -122,7 +124,7 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
       }
 
       const data = await res.json();
-      const replyText: string = data.reply ?? "(bo'sh javob)";
+      const replyText: string = data.reply ?? t('chat.emptyReply');
       setMessages((prev) => [
         ...prev,
         { id: crypto.randomUUID(), role: 'assistant', text: replyText },
@@ -134,7 +136,7 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
         {
           id: crypto.randomUUID(),
           role: 'error',
-          text: `Xato: ${msg}\n\nBackend ishlayotganini tekshiring: \`npm run server\` yoki \`npm run dev:all\`.`,
+          text: t('chat.error', { msg }),
         },
       ]);
     } finally {
@@ -198,7 +200,7 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
         <button
           onClick={() => setIsOpen(true)}
           className="fixed bottom-6 right-6 z-[120] w-14 h-14 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_8px_30px_rgba(16,185,129,0.45)] flex items-center justify-center transition-transform active:scale-95"
-          aria-label="Chat ochish"
+          aria-label={t('chat.openChat')}
         >
           <MessageCircle size={24} />
         </button>
@@ -222,17 +224,17 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
                 <button
                   onClick={clearChat}
                   className="text-xs text-white/50 hover:text-white/80 px-2 py-1 rounded"
-                  title="Tarixni tozalash"
+                  title={t('chat.clearHistory')}
                 >
-                  Tozalash
+                  {t('chat.clear')}
                 </button>
               )}
               {onLogout && (
                 <button
                   onClick={onLogout}
                   className="text-white/60 hover:text-white p-1 rounded"
-                  aria-label="Chiqish"
-                  title="Tizimdan chiqish"
+                  aria-label={t('chat.logout')}
+                  title={t('chat.logout')}
                 >
                   <LogOut size={16} />
                 </button>
@@ -240,15 +242,15 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
               <button
                 onClick={() => setIsExpanded((v) => !v)}
                 className="text-white/60 hover:text-white p-1 rounded"
-                aria-label={isExpanded ? 'Kichraytirish' : 'Kattalashtirish'}
-                title={isExpanded ? 'Kichraytirish' : 'Kattalashtirish'}
+                aria-label={isExpanded ? t('chat.collapse') : t('chat.expand')}
+                title={isExpanded ? t('chat.collapse') : t('chat.expand')}
               >
                 {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
               </button>
               <button
                 onClick={() => setIsOpen(false)}
                 className="text-white/60 hover:text-white p-1 rounded"
-                aria-label="Yopish"
+                aria-label={t('chat.close')}
               >
                 <X size={18} />
               </button>
@@ -261,8 +263,7 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
           >
             {messages.length === 0 && (
               <div className="text-center text-white/40 text-sm mt-8 px-4">
-                Xat matnini yozing yoki PDF/DOCX faylni biriktiring.
-                Claude metodologiya bo'yicha jadval qaytaradi.
+                {t('chat.emptyState')}
               </div>
             )}
 
@@ -289,15 +290,15 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
                         <button
                           onClick={() => copyMessage(m.id, m.text)}
                           className="text-white/40 hover:text-white/80 text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors"
-                          title="Nusxa olish"
+                          title={t('chat.copy')}
                         >
                           {copiedId === m.id ? (
                             <>
-                              <Check size={12} /> Nusxalandi
+                              <Check size={12} /> {t('chat.copied')}
                             </>
                           ) : (
                             <>
-                              <Copy size={12} /> Nusxa olish
+                              <Copy size={12} /> {t('chat.copy')}
                             </>
                           )}
                         </button>
@@ -314,7 +315,7 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
               <div className="flex justify-start">
                 <div className="bg-white/[0.06] border border-white/10 text-white/70 rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm flex items-center gap-2">
                   <Loader2 size={14} className="animate-spin" />
-                  Claude o&apos;ylayapti...
+                  {t('chat.thinking')}
                 </div>
               </div>
             )}
@@ -329,7 +330,7 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
                 <button
                   onClick={() => setFile(null)}
                   className="text-white/50 hover:text-white flex-shrink-0"
-                  aria-label="Faylni olib tashlash"
+                  aria-label={t('chat.removeFile')}
                 >
                   <X size={12} />
                 </button>
@@ -347,7 +348,7 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
                 onClick={pickFile}
                 disabled={isSending}
                 className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] hover:border-white/20 disabled:opacity-40 text-white/70 hover:text-white flex items-center justify-center transition-colors flex-shrink-0"
-                aria-label="Fayl biriktirish"
+                aria-label={t('chat.attachFile')}
                 title="PDF, DOCX, TXT, MD"
               >
                 <Paperclip size={16} />
@@ -357,7 +358,7 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder="Xat matnini yoki savolingizni yozing..."
+                placeholder={t('chat.inputPlaceholder')}
                 rows={1}
                 className="flex-1 resize-none bg-white/[0.04] border border-white/10 focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 outline-none rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/30 max-h-32"
               />
@@ -365,13 +366,13 @@ export function ChatPanel({ onLogout }: ChatPanelProps) {
                 onClick={send}
                 disabled={(!input.trim() && !file) || isSending}
                 className="w-10 h-10 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/10 disabled:text-white/30 text-white flex items-center justify-center transition-colors flex-shrink-0"
-                aria-label="Yuborish"
+                aria-label={t('chat.send')}
               >
                 <Send size={16} />
               </button>
             </div>
             <div className="text-[10px] text-white/30 mt-1.5 px-1">
-              Enter — yuborish, Shift+Enter — yangi qator. Fayl limit: 10 MB.
+              {t('chat.inputHint')}
             </div>
           </div>
         </div>

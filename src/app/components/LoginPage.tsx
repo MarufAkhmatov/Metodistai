@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Lock, Mail, Loader2, ShieldCheck } from 'lucide-react';
+import { useLang } from '../i18n';
 
 type Props = {
   onSuccess: (email: string) => void;
 };
 
 export function LoginPage({ onSuccess }: Props) {
+  const { t } = useLang();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -17,7 +19,7 @@ export function LoginPage({ onSuccess }: Props) {
     setError('');
 
     if (!email.trim() || !password) {
-      setError('Email va parolni kiriting.');
+      setError(t('login.enterBoth'));
       return;
     }
 
@@ -32,7 +34,7 @@ export function LoginPage({ onSuccess }: Props) {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(data?.error || `Kirib bo'lmadi (HTTP ${res.status})`);
+        throw new Error(data?.error || t('login.failed', { status: res.status }));
       }
 
       setPassword('');
@@ -54,7 +56,7 @@ export function LoginPage({ onSuccess }: Props) {
             <ShieldCheck size={28} className="text-white" />
           </div>
           <h1 className="text-xl font-semibold text-white">AI Metodist</h1>
-          <p className="text-sm text-white/40 mt-1">Tizimga kirish</p>
+          <p className="text-sm text-white/40 mt-1">{t('login.title')}</p>
         </div>
 
         <form
@@ -62,7 +64,7 @@ export function LoginPage({ onSuccess }: Props) {
           className="bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-[0_20px_60px_rgba(0,0,0,0.6)] space-y-4"
         >
           <div>
-            <label className="block text-xs text-white/50 mb-1.5">Email</label>
+            <label className="block text-xs text-white/50 mb-1.5">{t('login.email')}</label>
             <div className="relative">
               <Mail
                 size={16}
@@ -80,7 +82,7 @@ export function LoginPage({ onSuccess }: Props) {
           </div>
 
           <div>
-            <label className="block text-xs text-white/50 mb-1.5">Parol</label>
+            <label className="block text-xs text-white/50 mb-1.5">{t('login.password')}</label>
             <div className="relative">
               <Lock
                 size={16}
@@ -111,16 +113,16 @@ export function LoginPage({ onSuccess }: Props) {
             {isSubmitting ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
-                Tekshirilmoqda...
+                {t('login.submitting')}
               </>
             ) : (
-              'Kirish'
+              t('login.submit')
             )}
           </button>
         </form>
 
         <p className="text-center text-[11px] text-white/25 mt-5">
-          Faqat ruxsat berilgan foydalanuvchilar uchun.
+          {t('login.footer')}
         </p>
       </div>
     </div>

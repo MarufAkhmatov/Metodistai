@@ -5,6 +5,7 @@ import {
   Maximize2, Minimize2,
 } from 'lucide-react';
 import type { FolderInfo, FolderDocuments } from '../types';
+import { useLang, LOCALE_BY_LANG } from '../i18n';
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -12,11 +13,11 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function formatDate(iso: string | null): string {
+function formatDate(iso: string | null, locale: string): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 function docIconFor(format: string) {
@@ -32,6 +33,7 @@ function fileUrl(folder: string, name: string, download = false): string {
 }
 
 export function DashboardBottom({ activeFolder = null }: { activeFolder?: FolderInfo | null }) {
+  const { lang, t } = useLang();
   const [isLeftOpen, setIsLeftOpen] = useState(false);
   const [isRightOpen, setIsRightOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -125,14 +127,14 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
       `}>
         <div className="flex-1 min-h-0 w-full mt-1 bg-gradient-to-b from-white/[0.07] to-transparent rounded-tl-[20px] rounded-tr-none border-t border-l border-white/[0.08] pt-2 pl-3 pr-0 pb-0 flex flex-col relative">
           <div className="mb-4 pr-6">
-            <h2 className="text-lg font-medium text-white mb-1">Key Dates</h2>
-            <p className="text-xs text-white/40">Championing Community.</p>
+            <h2 className="text-lg font-medium text-white mb-1">{t('dash.keyDates')}</h2>
+            <p className="text-xs text-white/40">{t('dash.championing')}</p>
           </div>
 
           <div className="flex text-xs font-medium text-white/50 mb-3 px-2 pr-6">
             <div className="w-12"></div>
-            <div className="w-[110px]">Date</div>
-            <div>Event</div>
+            <div className="w-[110px]">{t('dash.date')}</div>
+            <div>{t('dash.event')}</div>
           </div>
 
           {/* Third Nested Folder */}
@@ -144,10 +146,10 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
                   <Plus size={14} />
                 </button>
                 <div className="w-[110px]">
-                  <div className="text-sm text-white font-medium">2 Weeks</div>
+                  <div className="text-sm text-white font-medium">{t('dash.twoWeeks')}</div>
                   <div className="text-[10px] text-white/40">01/12/2025</div>
                 </div>
-                <div className="text-sm text-white/70 font-medium">/Autorenew date</div>
+                <div className="text-sm text-white/70 font-medium">{t('dash.autorenewDate')}</div>
               </div>
 
               {/* Item 2 */}
@@ -156,16 +158,16 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
                   <Minus size={14} />
                 </button>
                 <div className="w-[110px]">
-                  <div className="text-sm text-white font-medium">2 Months</div>
+                  <div className="text-sm text-white font-medium">{t('dash.twoMonths')}</div>
                   <div className="text-[10px] text-white/40">01/02/2025</div>
                 </div>
-                <div className="text-sm text-white/70 font-medium">Termination date</div>
+                <div className="text-sm text-white/70 font-medium">{t('dash.terminationDate')}</div>
               </div>
 
               {/* Item 3 */}
               <div className="flex items-center group cursor-pointer hover:bg-white/[0.02] p-2 rounded-xl transition-colors -mx-2 mt-2">
                 <div className="w-8 h-8 mr-4 flex items-center justify-center text-sm font-medium text-white/60">
-                  Start
+                  {t('dash.start')}
                 </div>
                 <div className="w-[110px]">
                    <button className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:bg-white/10 transition-colors">
@@ -223,8 +225,8 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
             <button
               onClick={() => setIsExpanded((v) => !v)}
               className="absolute top-[44px] right-4 z-30 w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-white/70 hover:text-white transition-colors"
-              title={isExpanded ? "Kichraytirish" : "Kattalashtirish"}
-              aria-label={isExpanded ? "Kichraytirish" : "Kattalashtirish"}
+              title={isExpanded ? t('dash.collapse') : t('dash.expand')}
+              aria-label={isExpanded ? t('dash.collapse') : t('dash.expand')}
             >
               {isExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
             </button>
@@ -269,16 +271,16 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
                 </h1>
                 <p className="text-sm text-emerald-100/60">
                   {activeFolder
-                    ? `${activeFolder.documentCount} hujjat · ${activeFolder.subfolderCount} ichki papka · oxirgi o'zgarish ${formatDate(activeFolder.modifiedAt)}`
-                    : 'Papka tanlanmagan'}
+                    ? `${t('dash.documents', { count: activeFolder.documentCount })} · ${t('dash.subfolders', { count: activeFolder.subfolderCount })} · ${t('dash.lastModified', { date: formatDate(activeFolder.modifiedAt, LOCALE_BY_LANG[lang]) })}`
+                    : t('dash.noFolderSelected')}
                 </p>
               </div>
 
             {/* Progress Slider */}
             <div className="mb-6 relative z-10">
               <div className="flex justify-between text-xs font-medium text-white mb-3">
-                <span>Annual Data Privacy Audit</span>
-                <span className="text-white/60">Final Validation</span>
+                <span>{t('dash.annualAudit')}</span>
+                <span className="text-white/60">{t('dash.finalValidation')}</span>
               </div>
               <div className="relative h-[2px] w-full bg-white/20 flex items-center">
                 <div className="absolute left-0 top-0 h-full w-[80%] bg-emerald-400" />
@@ -313,7 +315,7 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium text-white/80 truncate">{sf.name}</div>
-                        <div className="text-xs text-white/40">{sf.documentCount} hujjat</div>
+                        <div className="text-xs text-white/40">{t('dash.documents', { count: sf.documentCount })}</div>
                       </div>
                     </div>
                   ))}
@@ -344,14 +346,14 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
                           <button
                             onClick={(e) => { e.stopPropagation(); openDoc(doc.name); }}
                             className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/15 flex items-center justify-center text-white/70 hover:text-white transition-colors"
-                            title="Ochish"
+                            title={t('dash.open')}
                           >
                             <Eye size={15} />
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); downloadDoc(doc.name); }}
                             className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/15 flex items-center justify-center text-white/70 hover:text-white transition-colors"
-                            title="Yuklab olish"
+                            title={t('dash.download')}
                           >
                             <Download size={15} />
                           </button>
@@ -362,7 +364,7 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
 
                   {docs.documents.length === 0 && docs.subfolders.length === 0 && (
                     <div className="text-xs text-white/40 text-center py-8">
-                      Bu papkada normativ hujjat yo'q.
+                      {t('dash.noDocsInFolder')}
                     </div>
                   )}
                 </>
@@ -370,7 +372,7 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
 
               {!docsLoading && !docsError && !docs && (
                 <div className="text-xs text-white/40 text-center py-8">
-                  Papka tanlanmagan.
+                  {t('dash.folderNotSelected')}
                 </div>
               )}
             </div>
@@ -396,7 +398,7 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
         <div className="flex-1 min-h-0 w-full mt-1 bg-gradient-to-b from-white/[0.07] to-transparent rounded-tr-[20px] rounded-tl-none border-t border-r border-white/[0.08] pt-2 pr-3 pl-0 pb-0 flex flex-col relative">
           
           <div className="mb-4 flex items-center text-xs font-medium text-white/50 pl-6 pt-2">
-            Event
+            {t('dash.event')}
           </div>
 
           {/* Third Nested Folder Equivalent */}
@@ -406,13 +408,13 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
               <div className="space-y-4 flex-1 overflow-y-auto min-h-0 pr-2 custom-scrollbar">
                 {/* Event 1 */}
                 <div className="group cursor-pointer">
-                  <div className="text-sm text-white font-medium mb-1 group-hover:text-emerald-400 transition-colors">Risk Assessment</div>
+                  <div className="text-sm text-white font-medium mb-1 group-hover:text-emerald-400 transition-colors">{t('dash.riskAssessment')}</div>
                   <div className="h-[1px] w-full bg-white/10 mt-3" />
                 </div>
 
                 {/* Event 2 */}
                 <div className="group cursor-pointer">
-                  <div className="text-sm text-white font-medium mb-1 group-hover:text-emerald-400 transition-colors">Deliverable Due</div>
+                  <div className="text-sm text-white font-medium mb-1 group-hover:text-emerald-400 transition-colors">{t('dash.deliverableDue')}</div>
                   <div className="h-[1px] w-full bg-white/10 mt-3" />
                 </div>
               </div>
@@ -424,7 +426,7 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
                 </button>
                 
                 <button className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-emerald-950 text-xs font-bold rounded-full transition-colors flex items-center space-x-1">
-                   <span>We're here</span>
+                   <span>{t('dash.wereHere')}</span>
                 </button>
                 
                 <button className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/60 hover:bg-white/10 transition-colors">

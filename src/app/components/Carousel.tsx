@@ -2,6 +2,7 @@ import { useRef, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { FileText } from 'lucide-react';
 import type { FolderInfo } from '../types';
+import { useLang } from '../i18n';
 
 function formatSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
@@ -16,6 +17,7 @@ interface CarouselProps {
 }
 
 export function Carousel({ activeIndex, setActiveIndex, folders }: CarouselProps) {
+  const { t: tr } = useLang();
   const [isDragging, setIsDragging] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
   const panStartIndexRef = useRef(activeIndex);
@@ -60,7 +62,7 @@ export function Carousel({ activeIndex, setActiveIndex, folders }: CarouselProps
     return (
       <div className="relative w-full h-[300px] md:h-[400px] flex items-center justify-center">
         <p className="text-white/40 text-sm text-center px-6">
-          Papkalar topilmadi. AI Metodist Agent papkasida normativ hujjatli papkalar borligini tekshiring.
+          {tr('carousel.noFolders')}
         </p>
       </div>
     );
@@ -228,7 +230,7 @@ export function Carousel({ activeIndex, setActiveIndex, folders }: CarouselProps
                         <span className="text-[30px] font-light text-black tracking-tight leading-none">
                           {folder.documentCount}
                         </span>
-                        <span className="text-[11px] text-black/50 font-medium self-end mb-1">fayl</span>
+                        <span className="text-[11px] text-black/50 font-medium self-end mb-1">{tr('carousel.file')}</span>
                       </div>
                       <div className="text-[10px] text-black/60 font-medium mt-1.5 text-center leading-tight px-1">
                         {[
@@ -237,7 +239,7 @@ export function Carousel({ activeIndex, setActiveIndex, folders }: CarouselProps
                           folder.excelCount > 0 && `Excel ${folder.excelCount}`,
                         ]
                           .filter(Boolean)
-                          .join('  ·  ') || 'Hujjat yo‘q'}
+                          .join('  ·  ') || tr('carousel.noDocuments')}
                       </div>
                       <div className="text-[11px] text-black/45 font-semibold mt-1">
                         {formatSize(folder.totalSizeBytes)}

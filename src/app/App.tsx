@@ -6,10 +6,12 @@ import { DashboardBottom } from "./components/DashboardBottom";
 import { ChatPanel } from "./components/ChatPanel";
 import { LoginPage } from "./components/LoginPage";
 import type { FolderInfo } from "./types";
+import { useLang } from "./i18n";
 
 type AuthState = 'loading' | 'out' | 'in';
 
 export default function App() {
+  const { t } = useLang();
   const [authState, setAuthState] = useState<AuthState>('loading');
   const [activeIndex, setActiveIndex] = useState(0);
   const [folders, setFolders] = useState<FolderInfo[] | null>(null);
@@ -100,7 +102,7 @@ export default function App() {
             ) : foldersError ? (
               <div className="relative w-full h-[300px] md:h-[400px] flex items-center justify-center">
                 <p className="text-red-300/80 text-sm text-center px-6 max-w-md">
-                  Papkalarni yuklab bo'lmadi: {foldersError}
+                  {t('app.foldersLoadError', { error: foldersError })}
                 </p>
               </div>
             ) : (
