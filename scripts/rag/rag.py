@@ -18,6 +18,21 @@ import traceback
 from pathlib import Path
 from collections import defaultdict
 
+# Windows konsolida kirill/UTF-8 belgilar crash bermasligi uchun stdout/stderr ni UTF-8 ga o'tkazamiz.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+
+def fs_path(p):
+    """Filesystem operatsiyalari uchun xavfsiz yo'l — Windows'da uzun yo'l (>260 belgi) qo'llab-quvvatlashini yoqadi."""
+    s = os.path.abspath(str(p))
+    if os.name == "nt" and not s.startswith("\\\\?\\"):
+        s = "\\\\?\\" + s
+    return s
+
 EMBED_MODEL = os.environ.get(
     "RAG_EMBED_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 )
@@ -60,7 +75,7 @@ def load_model():
 def extract_pdf(path):
     from pypdf import PdfReader
 
-    reader = PdfReader(str(path))
+    reader = PdfReader(fs_path(path))
     parts = []
     for page in reader.pages:
         try:
@@ -73,7 +88,7 @@ def extract_pdf(path):
 def extract_docx(path):
     import docx
 
-    document = docx.Document(str(path))
+    document = docx.Document(fs_path(path))
     parts = [p.text for p in document.paragraphs]
     for table in document.tables:
         for row in table.rows:
@@ -84,7 +99,7 @@ def extract_docx(path):
 def extract_xlsx(path):
     import openpyxl
 
-    wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
+    wb = openpyxl.load_workbook(fs_path(path), read_only=True, data_only=True)
     parts = []
     for ws in wb.worksheets:
         parts.append(f"# {ws.title}")
@@ -99,7 +114,7 @@ def extract_xlsx(path):
 def extract_xls(path):
     import xlrd
 
-    book = xlrd.open_workbook(str(path))
+    book = xlrd.open_workbook(fs_path(path))
     parts = []
     for sheet in book.sheets():
         parts.append(f"# {sheet.name}")
@@ -112,7 +127,7 @@ def extract_xls(path):
 
 
 def extract_text_file(path):
-    return path.read_text(encoding="utf-8", errors="ignore")
+    return Path(fs_path(path)).read_text(encoding="utf-8", errors="ignore")
 
 
 def extract(path):
@@ -180,7 +195,7 @@ def write_index_md(agent_dir, files, chunks, skipped):
     for p in files:
         rel = str(p.relative_to(agent_dir)).replace("\\", "/")
         folder = os.path.dirname(rel) or "."
-        st = p.stat()
+        st = os.stat(fs_path(p))
         by_folder[folder].append(
             {
                 "name": p.name,
@@ -256,7 +271,7 @@ def cmd_index(agent_dir):
 
     for p in files:
         rel = str(p.relative_to(agent_dir)).replace("\\", "/")
-        st = p.stat()
+        st = os.stat(fs_path(p))
         sig = {"mtime": int(st.st_mtime), "size": st.st_size}
         prev = old_manifest.get(rel)
         if (
