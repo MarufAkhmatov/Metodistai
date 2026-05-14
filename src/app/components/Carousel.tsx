@@ -3,6 +3,12 @@ import { motion } from 'motion/react';
 import { FileText } from 'lucide-react';
 import type { FolderInfo } from '../types';
 
+function formatSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
 interface CarouselProps {
   activeIndex: number;
   setActiveIndex: (val: number | ((prev: number) => number)) => void;
@@ -204,12 +210,12 @@ export function Carousel({ activeIndex, setActiveIndex, folders }: CarouselProps
                     </div>
                   )}
                   
-                  {/* Folder Label */}
-                  <div className={`font-medium tracking-wide z-10 ${isActive ? 'text-white text-2xl mb-1 drop-shadow-lg' : 'text-white text-base drop-shadow-md text-right'}`}>
+                  {/* Folder Label — active folder name sits on the right, smaller, clear of the white card */}
+                  <div className={`font-medium tracking-wide z-10 drop-shadow-md text-white ${isActive ? 'text-lg mb-1 drop-shadow-lg text-right' : 'text-base text-right'}`}>
                     {folder.name}
                   </div>
 
-                  {/* White folder — shows document count of the active folder */}
+                  {/* White folder — count, file types and total size of the active folder */}
                   {isActive && (
                     <motion.div
                       initial={{ opacity: 0, x: -20 }}
@@ -217,10 +223,25 @@ export function Carousel({ activeIndex, setActiveIndex, folders }: CarouselProps
                       transition={{ delay: 0.2 }}
                       className="absolute top-[8px] left-0 w-[198px] h-[117px] bg-white/[0.85] backdrop-blur-md rounded-2xl p-3 shadow-[0_15px_50px_rgba(0,0,0,0.5)] z-30 flex flex-col items-center justify-center pointer-events-auto cursor-default"
                     >
-                      <FileText size={20} className="text-emerald-600 mb-1" />
-                      <span className="text-[40px] font-light text-black tracking-tight leading-none">
-                        {folder.documentCount}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <FileText size={16} className="text-emerald-600" />
+                        <span className="text-[30px] font-light text-black tracking-tight leading-none">
+                          {folder.documentCount}
+                        </span>
+                        <span className="text-[11px] text-black/50 font-medium self-end mb-1">fayl</span>
+                      </div>
+                      <div className="text-[10px] text-black/60 font-medium mt-1.5 text-center leading-tight px-1">
+                        {[
+                          folder.pdfCount > 0 && `PDF ${folder.pdfCount}`,
+                          folder.wordCount > 0 && `Word ${folder.wordCount}`,
+                          folder.excelCount > 0 && `Excel ${folder.excelCount}`,
+                        ]
+                          .filter(Boolean)
+                          .join('  ·  ') || 'Hujjat yo‘q'}
+                      </div>
+                      <div className="text-[11px] text-black/45 font-semibold mt-1">
+                        {formatSize(folder.totalSizeBytes)}
+                      </div>
                     </motion.div>
                   )}
                 </div>

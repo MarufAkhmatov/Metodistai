@@ -3,6 +3,10 @@ export type FolderInfo = {
   documentCount: number;
   subfolderCount: number;
   modifiedAt: string | null;
+  totalSizeBytes: number;
+  pdfCount: number;
+  wordCount: number;
+  excelCount: number;
 };
 
 export type DocumentInfo = {

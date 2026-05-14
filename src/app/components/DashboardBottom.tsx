@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   Plus, Minus, UserPlus, Info, FileText, FileSpreadsheet,
   ChevronRight, ChevronLeft, Eye, Download, Loader2, Folder,
+  Maximize2, Minimize2,
 } from 'lucide-react';
 import type { FolderInfo, FolderDocuments } from '../types';
 
@@ -33,6 +34,7 @@ function fileUrl(folder: string, name: string, download = false): string {
 export function DashboardBottom({ activeFolder = null }: { activeFolder?: FolderInfo | null }) {
   const [isLeftOpen, setIsLeftOpen] = useState(false);
   const [isRightOpen, setIsRightOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [docs, setDocs] = useState<FolderDocuments | null>(null);
   const [docsLoading, setDocsLoading] = useState(false);
   const [docsError, setDocsError] = useState<string | null>(null);
@@ -100,7 +102,7 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
       <div className={`
         h-[280px] bg-gradient-to-b from-white/[0.04] to-transparent rounded-tl-[32px] rounded-tr-[32px] lg:rounded-tr-none border-t border-l lg:border-r-0 border-r border-white/[0.08] flex flex-col overflow-hidden backdrop-blur-md lg:-mr-4 pt-10 pl-4
         absolute lg:relative left-4 lg:left-0 bottom-0 lg:bottom-auto w-[300px] lg:w-auto z-40 transition-transform duration-300
-        ${isLeftOpen ? "translate-x-0" : "-translate-x-[150%] lg:translate-x-0"}
+        ${isLeftOpen ? "translate-x-0" : "-translate-x-[150%]"} ${isExpanded ? "lg:-translate-x-16" : "lg:translate-x-0"}
       `}>
         <div className="flex-1 min-h-0 w-full mt-1 bg-gradient-to-b from-white/[0.07] to-transparent rounded-tl-[20px] rounded-tr-none border-t border-l border-white/[0.08] pt-2 pl-3 pr-0 pb-0 flex flex-col relative">
           <div className="mb-4 pr-6">
@@ -158,10 +160,10 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
         </div>
       </div>
 
-      {/* Center Panel (Compliance details) */}
-      <div className="relative h-[280px] sm:h-[320px] md:h-[460px] w-full flex flex-col justify-end translate-y-[10px] md:translate-y-[20px] z-30">
-        
-        <div className="absolute inset-x-0 bottom-0 flex justify-center scale-[0.75] sm:scale-[0.85] md:scale-100 origin-bottom">
+      {/* Center Panel (folder details) */}
+      <div className={`relative h-[280px] sm:h-[320px] md:h-[460px] w-full flex flex-col justify-end translate-y-[10px] md:translate-y-[20px] ${isExpanded ? "z-[60]" : "z-30"}`}>
+
+        <div className={`absolute inset-x-0 bottom-0 flex justify-center origin-bottom transition-transform duration-300 ${isExpanded ? "scale-[1.5] sm:scale-[1.7] md:scale-[2]" : "scale-[0.75] sm:scale-[0.85] md:scale-100"}`}>
           {/* Background Dark Green Folder */}
           <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[500px] h-[410px] bg-[#16502b] rounded-[30px] z-[-1] shadow-[inset_0_2px_10px_rgba(255,255,255,0.1),0_-15px_30px_rgba(22,80,43,0.4)] border border-white/5" />
 
@@ -212,7 +214,17 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
 
           {/* Main Green Card (Folder Shape) */}
           <div className="relative w-[500px] h-[340px] z-10 drop-shadow-[0_-15px_40px_rgba(40,122,68,0.4)]">
-            
+
+            {/* Expand / collapse toggle */}
+            <button
+              onClick={() => setIsExpanded((v) => !v)}
+              className="absolute top-[44px] right-4 z-30 w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-white/70 hover:text-white transition-colors"
+              title={isExpanded ? "Kichraytirish" : "Kattalashtirish"}
+              aria-label={isExpanded ? "Kichraytirish" : "Kattalashtirish"}
+            >
+              {isExpanded ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+            </button>
+
             {/* Glass Background with exact path clipping */}
             <div 
               className="absolute inset-0 z-0 bg-gradient-to-br from-[#287a44]/80 via-[#287a44]/50 to-[#16502b]/70"
@@ -245,9 +257,9 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
             </svg>
 
             {/* Content Layer */}
-            <div className="relative z-20 w-[500px] h-[340px] flex flex-col px-10 pb-8 pt-[30px]">
+            <div className="relative z-20 w-[500px] h-[340px] flex flex-col px-10 pb-8 pt-[52px]">
               {/* Header — folder metadata */}
-              <div className="mb-5 relative z-10">
+              <div className="mb-5 relative z-10 pr-8">
                 <h1 className="text-xl font-medium text-white mb-1 transition-all duration-300 truncate">
                   {activeFolder?.name ?? '—'}
                 </h1>
@@ -375,7 +387,7 @@ export function DashboardBottom({ activeFolder = null }: { activeFolder?: Folder
       <div className={`
         h-[280px] bg-gradient-to-b from-white/[0.04] to-transparent rounded-tr-[32px] rounded-tl-[32px] lg:rounded-tl-none border-t border-r lg:border-l-0 border-l border-white/[0.08] flex flex-col overflow-hidden backdrop-blur-md lg:-ml-4 pt-10 pr-4
         absolute lg:relative right-4 lg:right-0 bottom-0 lg:bottom-auto w-[300px] lg:w-auto z-40 transition-transform duration-300
-        ${isRightOpen ? "translate-x-0" : "translate-x-[150%] lg:translate-x-0"}
+        ${isRightOpen ? "translate-x-0" : "translate-x-[150%]"} ${isExpanded ? "lg:translate-x-16" : "lg:translate-x-0"}
       `}>
         <div className="flex-1 min-h-0 w-full mt-1 bg-gradient-to-b from-white/[0.07] to-transparent rounded-tr-[20px] rounded-tl-none border-t border-r border-white/[0.08] pt-2 pr-3 pl-0 pb-0 flex flex-col relative">
           

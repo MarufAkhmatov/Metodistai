@@ -55,6 +55,34 @@ function countDocsRecursive(dir, depth = 0) {
   return count;
 }
 
+// Papka ichidagi hujjatlarni rekursiv skan qiladi: soni, umumiy hajmi va turlari bo'yicha.
+function scanDocsRecursive(dir, depth, acc) {
+  if (depth > MAX_SCAN_DEPTH) return acc;
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return acc;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      scanDocsRecursive(full, depth + 1, acc);
+    } else if (entry.isFile() && isDocFile(entry.name)) {
+      const ext = path.extname(entry.name).toLowerCase();
+      acc.count += 1;
+      try {
+        acc.sizeBytes += statSync(full).size;
+      } catch {}
+      if (ext === '.pdf') acc.pdf += 1;
+      else if (ext === '.doc' || ext === '.docx') acc.word += 1;
+      else if (ext === '.xls' || ext === '.xlsx') acc.excel += 1;
+    }
+  }
+  return acc;
+}
+
 // Bitta papka/fayl nomini AGENT_DIR ostida xavfsiz hal qiladi (path traversal'ni bloklaydi).
 function resolveUnderAgentDir(segment) {
   if (
@@ -217,8 +245,8 @@ app.get('/api/folders', requireAuth, (_req, res) => {
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
     const full = path.join(AGENT_DIR, entry.name);
-    const documentCount = countDocsRecursive(full);
-    if (documentCount === 0) continue;
+    const scan = scanDocsRecursive(full, 0, { count: 0, sizeBytes: 0, pdf: 0, word: 0, excel: 0 });
+    if (scan.count === 0) continue;
     let subfolderCount = 0;
     try {
       subfolderCount = readdirSync(full, { withFileTypes: true }).filter(
@@ -229,7 +257,16 @@ app.get('/api/folders', requireAuth, (_req, res) => {
     try {
       modifiedAt = statSync(full).mtime.toISOString();
     } catch {}
-    folders.push({ name: entry.name, documentCount, subfolderCount, modifiedAt });
+    folders.push({
+      name: entry.name,
+      documentCount: scan.count,
+      subfolderCount,
+      modifiedAt,
+      totalSizeBytes: scan.sizeBytes,
+      pdfCount: scan.pdf,
+      wordCount: scan.word,
+      excelCount: scan.excel,
+    });
   }
   folders.sort((a, b) => a.name.localeCompare(b.name));
   res.json({ folders });
