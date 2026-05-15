@@ -274,6 +274,17 @@ function validateAgentDir() {
   return null;
 }
 
+// multer/busboy fayl nomini latin1 sifatida o'qiydi (RFC 7578), lekin brauzer UTF-8 yuboradi.
+// Mojibake'ni oldini olish uchun latin1 -> utf8 ga qayta dekodlaymiz.
+function decodeOriginalName(name) {
+  if (typeof name !== 'string' || !name) return '';
+  try {
+    return Buffer.from(name, 'latin1').toString('utf8');
+  } catch {
+    return name;
+  }
+}
+
 async function extractText(file) {
   const ext = path.extname(file.originalname).toLowerCase();
   if (!ALLOWED_EXT.has(ext)) {
@@ -380,13 +391,16 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true });
 });
 
-// AGENT_DIR ichidagi, kamida bitta normativ hujjati bor papkalar ro'yxati.
-app.get('/api/folders', requireAuth, (_req, res) => {
+// AGENT_DIR ichidagi papkalar ro'yxati.
+// Default: faqat ichida normativ hujjati bor papkalar (dashboard uchun).
+// `?includeEmpty=1` — bo'sh papkalarni ham qo'shadi (Add files dropdown'i uchun).
+app.get('/api/folders', requireAuth, (req, res) => {
   const dirError = validateAgentDir();
   if (dirError) {
     res.status(500).json({ error: dirError });
     return;
   }
+  const includeEmpty = String(req.query?.includeEmpty || '') === '1';
   let entries;
   try {
     entries = readdirSync(AGENT_DIR, { withFileTypes: true });
@@ -399,7 +413,7 @@ app.get('/api/folders', requireAuth, (_req, res) => {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
     const full = path.join(AGENT_DIR, entry.name);
     const scan = scanDocsRecursive(full, 0, { count: 0, sizeBytes: 0, pdf: 0, word: 0, excel: 0 });
-    if (scan.count === 0) continue;
+    if (!includeEmpty && scan.count === 0) continue;
     let subfolderCount = 0;
     try {
       subfolderCount = readdirSync(full, { withFileTypes: true }).filter(
@@ -481,7 +495,7 @@ app.post('/api/folders/:folder/upload', requireAuth, upload.single('file'), (req
     res.status(404).json({ error: 'Papka topilmadi.' });
     return;
   }
-  const origName = req.file.originalname || '';
+  const origName = decodeOriginalName(req.file.originalname || '');
   const ext = path.extname(origName).toLowerCase();
   if (!UPLOAD_EXT.has(ext)) {
     res
@@ -822,7 +836,7 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
   if (req.file) {
     try {
       fileText = await extractText(req.file);
-      fileName = req.file.originalname;
+      fileName = decodeOriginalName(req.file.originalname);
       console.log(`[chat] extracted ${fileText.length} chars from ${fileName}`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

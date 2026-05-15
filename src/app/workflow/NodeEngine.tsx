@@ -201,12 +201,18 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
   const hasFile = chatFile !== null;
 
   // Knowledge Base papkalar — soni + ro'yxat (Add files dropdown'i uchun).
+  // includeEmpty=1 — yangi yaratilgan bo'sh papkalar ham qaytariladi.
+  // "Archive folder" o'tkazib yuboriladi — u faqat AI saqlagan analizlar uchun.
   const refreshFolders = () => {
-    fetch('/api/folders')
+    fetch('/api/folders?includeEmpty=1')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data && Array.isArray(data.folders)) {
-          setKbFolders(data.folders.map((f: { name: string }) => ({ name: f.name })));
+          setKbFolders(
+            data.folders
+              .filter((f: { name: string }) => f.name !== 'Archive folder')
+              .map((f: { name: string }) => ({ name: f.name }))
+          );
         }
       })
       .catch(() => {});
