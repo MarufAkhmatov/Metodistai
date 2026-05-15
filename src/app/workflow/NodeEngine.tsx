@@ -63,11 +63,11 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
     { id: 'c1', from: 'input', fromPort: 'right', to: 'agent', toPort: 'left' },
     { id: 'c2', from: 'agent', fromPort: 'right', to: 'kb', toPort: 'left' },
     { id: 'c3', from: 'chat', fromPort: 'top', to: 'agent', toPort: 'bottom' },
-    // KB → Folders from KB (to'g'ridan-to'g'ri)
+    // KB → Folders from KB (to'g'ridan-to'g'ri, pastga)
     { id: 'c4', from: 'kb', fromPort: 'bottom', to: 'kb_folders', toPort: 'top' },
-    // KB → Create folders (alohida perexod)
-    { id: 'c5', from: 'kb', fromPort: 'bottom', to: 'action_create', toPort: 'top' },
-    // Create folders → Add files (ketma-ketlik)
+    // KB → Create folders (o'ng tomonga, alohida perexod)
+    { id: 'c5', from: 'kb', fromPort: 'right', to: 'action_create', toPort: 'left' },
+    // Create folders → Add files (vertikal ketma-ketlik)
     { id: 'c6', from: 'action_create', fromPort: 'bottom', to: 'action_add', toPort: 'top' },
   ]);
 
@@ -103,7 +103,87 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
   const [chatBusy, setChatBusy] = useState(false);
   const [kbMatches, setKbMatches] = useState<KbFolder[]>([]);
   const [openFolder, setOpenFolder] = useState<string | null>(null);
-  const [folderCount, setFolderCount] = useState<number | null>(null);
+  // KB papkalarning to'liq ro'yxati (Add files dialog'ida dropdown uchun)
+  const [kbFolders, setKbFolders] = useState<{ name: string }[]>([]);
+  const folderCount: number | null = kbFolders.length > 0 ? kbFolders.length : null;
+
+  // --- Create folders / Add files modal state ---
+  const [showCreateFolder, setShowCreateFolder] = useState(false);
+  const [createFolderName, setCreateFolderName] = useState('');
+  const [createFolderError, setCreateFolderError] = useState<string | null>(null);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+
+  const [showAddFiles, setShowAddFiles] = useState(false);
+  const [addFilesTarget, setAddFilesTarget] = useState('');
+  const [addFilesError, setAddFilesError] = useState<string | null>(null);
+  const [addFilesUploading, setAddFilesUploading] = useState(false);
+  const addFilesInputRef = useRef<HTMLInputElement>(null);
+  const dragMovedRef = useRef(false);
+
+  // Modal'lar uchun submit handlerlari
+  const submitCreateFolder = async () => {
+    const trimmed = createFolderName.trim();
+    if (!trimmed) {
+      setCreateFolderError("Papka nomi bo'sh.");
+      return;
+    }
+    setCreatingFolder(true);
+    setCreateFolderError(null);
+    try {
+      const res = await fetch('/api/folders/create', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCreateFolderError(data?.error || `HTTP ${res.status}`);
+        return;
+      }
+      refreshFolders();
+      setCreateFolderName('');
+      setShowCreateFolder(false);
+    } catch (e) {
+      setCreateFolderError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setCreatingFolder(false);
+    }
+  };
+
+  const submitAddFile = async () => {
+    const folder = addFilesTarget;
+    const file = addFilesInputRef.current?.files?.[0];
+    if (!folder) {
+      setAddFilesError('Papkani tanlang.');
+      return;
+    }
+    if (!file) {
+      setAddFilesError('Faylni tanlang.');
+      return;
+    }
+    setAddFilesUploading(true);
+    setAddFilesError(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/folders/${encodeURIComponent(folder)}/upload`, {
+        method: 'POST',
+        body: form,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAddFilesError(data?.error || `HTTP ${res.status}`);
+        return;
+      }
+      refreshFolders();
+      if (addFilesInputRef.current) addFilesInputRef.current.value = '';
+      setShowAddFiles(false);
+    } catch (e) {
+      setAddFilesError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAddFilesUploading(false);
+    }
+  };
 
   // --- Save / archive state ---
   type Analysis = { id: string; text: string };
@@ -120,20 +200,19 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
   const running = isRunning || chatBusy;
   const hasFile = chatFile !== null;
 
-  // Real Knowledge Base folder count.
-  useEffect(() => {
-    let cancelled = false;
+  // Knowledge Base papkalar — soni + ro'yxat (Add files dropdown'i uchun).
+  const refreshFolders = () => {
     fetch('/api/folders')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!cancelled && data && Array.isArray(data.folders)) {
-          setFolderCount(data.folders.length);
+        if (data && Array.isArray(data.folders)) {
+          setKbFolders(data.folders.map((f: { name: string }) => ({ name: f.name })));
         }
       })
       .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+  };
+  useEffect(() => {
+    refreshFolders();
   }, []);
 
   // Archive folder size (saved docx count).
@@ -164,11 +243,14 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
     const inputX = Math.max(40, inputBaseX * 0.4); // 60% chap tomonga, kamida 40px gap
     const kbBaseX = cx + 200; // oldingi joy (KB w-[192px])
     const kbRightSpace = Math.max(0, w - kbBaseX - 192);
-    const kbX = Math.min(w - 232, kbBaseX + kbRightSpace * 0.6); // 60% o'ng tomonga, kamida 40px gap
+    // KB endi 30% o'ngga (oldingi 60% emas) — action_create/add ga o'ng tomonidan joy qoldirish uchun
+    const kbX = Math.min(w - 232, kbBaseX + kbRightSpace * 0.3);
     // Folders from KB papkasi 30% o'ngga surilgan (w-[224px])
     const kbFoldersBaseX = cx + 200;
     const kbFoldersRightSpace = Math.max(0, w - kbFoldersBaseX - 224);
     const kbFoldersX = Math.min(w - 264, kbFoldersBaseX + kbFoldersRightSpace * 0.3);
+    // Action tugmalari KB ning o'ng tomonida, vertikal ketma-ketlikda
+    const actionX = Math.min(w - 144 - 12, kbX + 192 + 12);
     setPositions({
       input: { x: inputX, y: 170 },
       agent: { x: cx - 120, y: 130 },
@@ -177,8 +259,8 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
         x: Math.max(20, cx - CHAT_BASE_W / 2),
         y: Math.max(180, h - CHAT_BASE_H - 24),
       },
-      action_create: { x: cx + 160, y: 260 },
-      action_add: { x: cx + 160, y: 340 }, // Create folders ostida (vertikal ketma-ketlik)
+      action_create: { x: actionX, y: 105 }, // KB top yonida
+      action_add: { x: actionX, y: 195 }, // Create folders ostida
       kb_folders: { x: kbFoldersX, y: 360 },
       archive: { x: Math.max(40, w - 220), y: Math.max(40, h - 220) },
     });
@@ -191,6 +273,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
     if (!dragId) return;
     const onMove = (e: MouseEvent) => {
       const z = zoomRef.current || 1;
+      if (e.movementX !== 0 || e.movementY !== 0) dragMovedRef.current = true;
       setPositions((prev) => {
         const cur = prev[dragId];
         if (!cur) return prev;
@@ -218,6 +301,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
 
   const startNodeDrag = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
+    dragMovedRef.current = false;
     setDragId(id);
   };
 
@@ -253,12 +337,15 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
     if (nodeId === 'kb') {
       // w-[192px]
       if (port === 'left') return { x: pos.x, y: pos.y + 56 };
+      if (port === 'right') return { x: pos.x + 192, y: pos.y + 56 };
       if (port === 'bottom') return { x: pos.x + 96, y: pos.y + 112 };
     }
     if (nodeId === 'chat') {
       if (port === 'top') return { x: pos.x + CHAT_BASE_W / 2, y: pos.y };
     }
     if (nodeId === 'action_create') {
+      // w-[144px], h~40px — chap tomonida KB ulanadi
+      if (port === 'left') return { x: pos.x, y: pos.y + 20 };
       if (port === 'top') return { x: pos.x + 72, y: pos.y };
       if (port === 'bottom') return { x: pos.x + 72, y: pos.y + 40 };
     }
@@ -689,6 +776,11 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
             onMouseUp={() => completeConnection('kb', 'left')}
             className="absolute left-[-6px] top-[56px] -translate-y-1/2 w-3 h-3 rounded-full bg-[#22ff88] border-2 border-black/80 shadow-[0_0_10px_#22ff88] opacity-0 group-hover:opacity-100 transition-opacity z-20"
           />
+          {/* Right port — action_create ga ulanish manbai */}
+          <div
+            onMouseDown={(e) => startConnection(e, 'kb', 'right')}
+            className="absolute right-[-6px] top-[56px] -translate-y-1/2 w-3 h-3 rounded-full bg-[#22ff88] border-2 border-black/80 shadow-[0_0_10px_#22ff88] opacity-0 group-hover:opacity-100 transition-opacity cursor-crosshair z-20"
+          />
           <div
             onMouseDown={(e) => startConnection(e, 'kb', 'bottom')}
             className="absolute bottom-[-6px] left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-[#22ff88] border-2 border-black/80 shadow-[0_0_10px_#22ff88] opacity-0 group-hover:opacity-100 transition-opacity cursor-crosshair z-20"
@@ -736,13 +828,25 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
         </div>
       </div>
 
-      {/* 5. Create Folders */}
+      {/* 5. Create Folders — click ochadi modal */}
       <div
         style={nodeStyle('action_create')}
         onMouseDown={(e) => startNodeDrag(e, 'action_create')}
+        onClick={() => {
+          if (dragMovedRef.current) return;
+          setShowCreateFolder(true);
+        }}
         className="absolute top-0 left-0 z-10 w-[144px] cursor-grab active:cursor-grabbing"
+        title="Yangi papka yaratish"
       >
         <div className="relative group">
+          {/* Left port — KB.right dan ulanish keladi */}
+          <div
+            onMouseDown={stopMouseDown}
+            onMouseUp={() => completeConnection('action_create', 'left')}
+            className="absolute left-[-6px] top-[20px] -translate-y-1/2 w-3 h-3 rounded-full bg-[#22ff88] border-2 border-black/80 shadow-[0_0_10px_#22ff88] opacity-0 group-hover:opacity-100 transition-opacity z-20"
+          />
+          {/* Top port (eski) */}
           <div
             onMouseDown={stopMouseDown}
             onMouseUp={() => completeConnection('action_create', 'top')}
@@ -765,11 +869,16 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
         </div>
       </div>
 
-      {/* 6. Add Files */}
+      {/* 6. Add Files — click ochadi modal */}
       <div
         style={nodeStyle('action_add')}
         onMouseDown={(e) => startNodeDrag(e, 'action_add')}
+        onClick={() => {
+          if (dragMovedRef.current) return;
+          setShowAddFiles(true);
+        }}
         className="absolute top-0 left-0 z-10 w-[144px] cursor-grab active:cursor-grabbing"
+        title="Mavjud papkaga fayl qo'shish"
       >
         <div className="relative group">
           <div
@@ -973,6 +1082,196 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
       </AnimatePresence>
       </div>
       {/* /scaled scene wrapper */}
+
+      {/* Create folder modal — Lokal KB papkasida yangi (bo'sh) papka yaratadi */}
+      <AnimatePresence>
+        {showCreateFolder && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-6"
+            onClick={() => {
+              if (!creatingFolder) setShowCreateFolder(false);
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <motion.div
+              initial={{ y: 10, scale: 0.96, opacity: 0 }}
+              animate={{ y: 0, scale: 1, opacity: 1 }}
+              exit={{ y: 10, scale: 0.96, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-[420px] bg-[#0a0a0a] border border-[#22ff88]/30 rounded-2xl p-5 shadow-[0_24px_60px_rgba(0,0,0,0.6)]"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-[#22ff88]/15 border border-[#22ff88]/30 flex items-center justify-center">
+                    <Folder className="w-4 h-4 text-[#22ff88]" />
+                  </div>
+                  <h2 className="text-base font-semibold text-white">Yangi papka yaratish</h2>
+                </div>
+                <button
+                  onClick={() => !creatingFolder && setShowCreateFolder(false)}
+                  className="text-white/50 hover:text-white p-1 rounded"
+                  aria-label="Yopish"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <p className="text-xs text-white/55 mb-3 leading-relaxed">
+                Lokal Knowledge Base papkangizda bo'sh papka yaratiladi. Keyin "Add files" tugmasi orqali fayllar qo'shasiz.
+              </p>
+              <input
+                autoFocus
+                value={createFolderName}
+                onChange={(e) => {
+                  setCreateFolderName(e.target.value);
+                  if (createFolderError) setCreateFolderError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitCreateFolder();
+                  if (e.key === 'Escape' && !creatingFolder) setShowCreateFolder(false);
+                }}
+                placeholder="Papka nomi (masalan: HR bo'limi)"
+                className="w-full bg-black/50 border border-white/10 focus:border-[#22ff88]/50 focus:ring-1 focus:ring-[#22ff88]/40 outline-none rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30"
+              />
+              {createFolderError && (
+                <p className="text-[12px] text-red-300 mt-2">{createFolderError}</p>
+              )}
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  onClick={() => setShowCreateFolder(false)}
+                  disabled={creatingFolder}
+                  className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 text-sm transition-colors"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  onClick={submitCreateFolder}
+                  disabled={creatingFolder || !createFolderName.trim()}
+                  className="px-4 py-2 rounded-xl bg-[#22ff88] hover:bg-[#22ff88]/90 disabled:bg-white/10 disabled:text-white/30 text-black text-sm font-semibold flex items-center gap-1.5 transition-colors"
+                >
+                  {creatingFolder ? (
+                    <>
+                      <RotateCcw size={13} className="animate-spin" /> Yaratilmoqda…
+                    </>
+                  ) : (
+                    <>
+                      <Folder size={13} /> Yaratish
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Add files modal — mavjud papkalardan birini tanlab fayl yuklash */}
+      <AnimatePresence>
+        {showAddFiles && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-6"
+            onClick={() => {
+              if (!addFilesUploading) setShowAddFiles(false);
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <motion.div
+              initial={{ y: 10, scale: 0.96, opacity: 0 }}
+              animate={{ y: 0, scale: 1, opacity: 1 }}
+              exit={{ y: 10, scale: 0.96, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-[460px] bg-[#0a0a0a] border border-[#22ff88]/30 rounded-2xl p-5 shadow-[0_24px_60px_rgba(0,0,0,0.6)]"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-[#22ff88]/15 border border-[#22ff88]/30 flex items-center justify-center">
+                    <FileIcon className="w-4 h-4 text-[#22ff88]" />
+                  </div>
+                  <h2 className="text-base font-semibold text-white">Faylni papkaga qo'shish</h2>
+                </div>
+                <button
+                  onClick={() => !addFilesUploading && setShowAddFiles(false)}
+                  className="text-white/50 hover:text-white p-1 rounded"
+                  aria-label="Yopish"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <p className="text-xs text-white/55 mb-3 leading-relaxed">
+                Mavjud papkalardan birini tanlang va PDF, DOC, DOCX, XLS, XLSX, TXT yoki MD faylni yuklang.
+              </p>
+
+              <label className="block text-[11px] uppercase tracking-wider text-white/40 font-medium mb-1">
+                Maqsad papka
+              </label>
+              <select
+                value={addFilesTarget}
+                onChange={(e) => {
+                  setAddFilesTarget(e.target.value);
+                  if (addFilesError) setAddFilesError(null);
+                }}
+                className="w-full bg-black/50 border border-white/10 focus:border-[#22ff88]/50 focus:ring-1 focus:ring-[#22ff88]/40 outline-none rounded-xl px-3 py-2.5 text-sm text-white mb-3"
+              >
+                <option value="" disabled>
+                  {kbFolders.length === 0 ? 'Papkalar yo\'q — avval "Create folders" bilan yarating' : 'Papkani tanlang…'}
+                </option>
+                {kbFolders.map((f) => (
+                  <option key={f.name} value={f.name}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+
+              <label className="block text-[11px] uppercase tracking-wider text-white/40 font-medium mb-1">
+                Fayl
+              </label>
+              <input
+                ref={addFilesInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.md"
+                onChange={() => addFilesError && setAddFilesError(null)}
+                className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-sm text-white/80 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-[#22ff88]/15 file:text-[#22ff88] file:text-xs file:font-medium file:cursor-pointer hover:file:bg-[#22ff88]/25"
+              />
+
+              {addFilesError && (
+                <p className="text-[12px] text-red-300 mt-2">{addFilesError}</p>
+              )}
+
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  onClick={() => setShowAddFiles(false)}
+                  disabled={addFilesUploading}
+                  className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 text-sm transition-colors"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  onClick={submitAddFile}
+                  disabled={addFilesUploading || !addFilesTarget || kbFolders.length === 0}
+                  className="px-4 py-2 rounded-xl bg-[#22ff88] hover:bg-[#22ff88]/90 disabled:bg-white/10 disabled:text-white/30 text-black text-sm font-semibold flex items-center gap-1.5 transition-colors"
+                >
+                  {addFilesUploading ? (
+                    <>
+                      <RotateCcw size={13} className="animate-spin" /> Yuklanmoqda…
+                    </>
+                  ) : (
+                    <>
+                      <FileIcon size={13} /> Yuklash
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

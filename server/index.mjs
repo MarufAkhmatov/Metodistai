@@ -425,6 +425,99 @@ app.get('/api/folders', requireAuth, (_req, res) => {
   res.json({ folders });
 });
 
+// AGENT_DIR ichida yangi (bo'sh) papka yaratish — "Create folders" tuguni uchun.
+app.post('/api/folders/create', requireAuth, (req, res) => {
+  const dirError = validateAgentDir();
+  if (dirError) {
+    res.status(500).json({ error: dirError });
+    return;
+  }
+  const raw = typeof req.body?.name === 'string' ? req.body.name : '';
+  const name = raw
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1f]/g, '')
+    .replace(/[\\/:*?"<>|]/g, '')
+    .trim();
+  if (!name) {
+    res.status(400).json({ error: "Papka nomi bo'sh." });
+    return;
+  }
+  if (name === '.' || name === '..' || name.startsWith('.') || name === ARCHIVE_FOLDER_NAME) {
+    res.status(400).json({ error: 'Bu nomdan foydalanib bo\'lmaydi.' });
+    return;
+  }
+  if (name.length > 80) {
+    res.status(400).json({ error: 'Papka nomi juda uzun (maks 80 belgi).' });
+    return;
+  }
+  const target = path.join(AGENT_DIR, name);
+  if (existsSync(target)) {
+    res.status(409).json({ error: 'Bu nomdagi papka allaqachon mavjud.' });
+    return;
+  }
+  try {
+    mkdirSync(target, { recursive: false });
+    res.json({ ok: true, name });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// Tanlangan papkaga fayl yuklash — "Add files" tuguni uchun.
+const UPLOAD_EXT = new Set(['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.txt', '.md']);
+app.post('/api/folders/:folder/upload', requireAuth, upload.single('file'), (req, res) => {
+  const dirError = validateAgentDir();
+  if (dirError) {
+    res.status(500).json({ error: dirError });
+    return;
+  }
+  if (!req.file) {
+    res.status(400).json({ error: 'Fayl yuborilmadi.' });
+    return;
+  }
+  const folderPath = resolveUnderAgentDir(req.params.folder);
+  if (!folderPath || !existsSync(folderPath) || !statSync(folderPath).isDirectory()) {
+    res.status(404).json({ error: 'Papka topilmadi.' });
+    return;
+  }
+  const origName = req.file.originalname || '';
+  const ext = path.extname(origName).toLowerCase();
+  if (!UPLOAD_EXT.has(ext)) {
+    res
+      .status(400)
+      .json({ error: `Qo'llanilmaydigan fayl turi: ${ext}. Faqat .pdf .doc .docx .xls .xlsx .txt .md` });
+    return;
+  }
+  // Fayl nomini xavfsiz qilamiz, lekin asl nomdan ko'p uzoqlashmaymiz.
+  const safeName = origName
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\x00-\x1f]/g, '')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .trim();
+  if (!safeName || safeName === '.' || safeName === '..') {
+    res.status(400).json({ error: 'Fayl nomi noto\'g\'ri.' });
+    return;
+  }
+  const dest = path.join(folderPath, safeName);
+  if (existsSync(dest)) {
+    res.status(409).json({ error: 'Shu nomdagi fayl allaqachon mavjud.' });
+    return;
+  }
+  try {
+    writeFileSync(dest, req.file.buffer);
+    res.json({
+      ok: true,
+      folder: req.params.folder,
+      name: safeName,
+      sizeBytes: req.file.size,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: msg });
+  }
+});
+
 // Tanlangan papkadagi normativ hujjatlar va ichki papkalar.
 app.get('/api/folders/:folder/documents', requireAuth, (req, res) => {
   const dirError = validateAgentDir();
