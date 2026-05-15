@@ -8,7 +8,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { PDFParse } from 'pdf-parse';
 import { spawn } from 'node:child_process';
-import { existsSync, statSync, readdirSync, readFileSync, mkdirSync } from 'node:fs';
+import { existsSync, statSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import process from 'node:process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,6 +19,7 @@ import {
   getRagStatus,
 } from './rag.mjs';
 import { createMasker, loadMaskTerms, resetMaskMap } from './mask.mjs';
+import { markdownToDocxBuffer } from './markdown-to-docx.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
@@ -434,6 +435,98 @@ app.get('/api/kb/file', requireAuth, (req, res) => {
     res.download(filePath, path.basename(filePath));
   } else {
     res.sendFile(filePath);
+  }
+});
+
+// --- Archive folder ("o'ng-quyi sariq papka") ---
+const ARCHIVE_FOLDER_NAME = 'Archive folder';
+
+function ensureArchiveDir() {
+  if (!AGENT_DIR) return null;
+  const dir = path.join(AGENT_DIR, ARCHIVE_FOLDER_NAME);
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch {}
+  return dir;
+}
+
+function sanitizeName(s, fallback = 'analiz') {
+  const cleaned = String(s || '')
+    // eslint-disable-next-line no-control-regex
+    .replace(/[ -\/\\:*?"<>|]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60);
+  return cleaned || fallback;
+}
+
+app.get('/api/archive/files', requireAuth, (_req, res) => {
+  const dirError = validateAgentDir();
+  if (dirError) {
+    res.status(500).json({ error: dirError });
+    return;
+  }
+  const dir = ensureArchiveDir();
+  if (!dir) {
+    res.json({ folder: ARCHIVE_FOLDER_NAME, files: [] });
+    return;
+  }
+  let entries = [];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {}
+  const files = entries
+    .filter((e) => e.isFile() && /\.docx$/i.test(e.name))
+    .map((e) => {
+      let st = null;
+      try {
+        st = statSync(path.join(dir, e.name));
+      } catch {}
+      return {
+        name: e.name,
+        sizeBytes: st ? st.size : 0,
+        modifiedAt: st ? st.mtime.toISOString() : null,
+      };
+    })
+    .sort((a, b) => (b.modifiedAt || '').localeCompare(a.modifiedAt || ''));
+  res.json({ folder: ARCHIVE_FOLDER_NAME, files });
+});
+
+app.post('/api/save-archive', requireAuth, async (req, res) => {
+  const dirError = validateAgentDir();
+  if (dirError) {
+    res.status(500).json({ error: dirError });
+    return;
+  }
+  const markdown = typeof req.body?.markdown === 'string' ? req.body.markdown : '';
+  if (!markdown.trim()) {
+    res.status(400).json({ error: "Bo'sh matn saqlab bo'lmaydi." });
+    return;
+  }
+  const titleRaw = typeof req.body?.title === 'string' ? req.body.title : '';
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+  const firstLine = markdown.split('\n').find((l) => l.trim()) || '';
+  const safeTitle = sanitizeName(titleRaw || firstLine.replace(/^#+\s*/, ''));
+  const filename = `${stamp}_${safeTitle}.docx`;
+  const dir = ensureArchiveDir();
+  if (!dir) {
+    res.status(500).json({ error: "Arxiv papkasini yaratib bo'lmadi." });
+    return;
+  }
+  try {
+    const buffer = await markdownToDocxBuffer(markdown, { title: safeTitle });
+    const filePath = path.join(dir, filename);
+    writeFileSync(filePath, buffer);
+    res.json({
+      ok: true,
+      filename,
+      relPath: `${ARCHIVE_FOLDER_NAME}/${filename}`,
+      folder: ARCHIVE_FOLDER_NAME,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[archive] save error:', msg);
+    res.status(500).json({ error: msg });
   }
 });
 

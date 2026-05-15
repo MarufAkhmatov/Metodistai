@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Send, Loader2, Paperclip, X, Copy, Check } from 'lucide-react';
+import {
+  Bot,
+  Send,
+  Loader2,
+  Paperclip,
+  X,
+  Copy,
+  Check,
+  Save,
+  Maximize2,
+  Minimize2,
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useLang } from '../i18n';
@@ -14,12 +25,23 @@ type WorkflowChatProps = {
   onFileChange?: (file: File | null) => void;
   onBusyChange?: (busy: boolean) => void;
   onKbMatches?: (matches: KbFolder[]) => void;
+  onAnalysis?: (text: string, id: string) => void;
+  onSaveRequest?: (text: string, id: string) => Promise<{ ok: boolean }> | void;
+  savedIds?: Set<string>;
   onHeaderMouseDown?: (e: React.MouseEvent) => void;
 };
 
 const STORAGE_KEY = 'metodistai.workflow.chat.v1';
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const ACCEPT = '.pdf,.docx,.txt,.md';
+
+// Default base: oldingi 360×460 dan eni +30%, bo'yi -20%
+const BASE_W = 468;
+const BASE_H = 368;
+// Kengaytirilgan o'lcham: maydon ~3× (har bir o'lcham ×1.73)
+const EXPAND_FACTOR = 1.73;
+const EXPANDED_W = Math.round(BASE_W * EXPAND_FACTOR);
+const EXPANDED_H = Math.round(BASE_H * EXPAND_FACTOR);
 
 function loadHistory(): Message[] {
   try {
@@ -41,6 +63,9 @@ export function WorkflowChat({
   onFileChange,
   onBusyChange,
   onKbMatches,
+  onAnalysis,
+  onSaveRequest,
+  savedIds,
   onHeaderMouseDown,
 }: WorkflowChatProps) {
   const { t } = useLang();
@@ -49,6 +74,8 @@ export function WorkflowChat({
   const [messages, setMessages] = useState<Message[]>(() => loadHistory());
   const [isSending, setIsSending] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -88,7 +115,10 @@ export function WorkflowChat({
     if ((!text && !file) || isSending) return;
 
     const sentFile = file;
-    const userText = [text, sentFile ? `\u{1F4CE} ${sentFile.name} (${formatSize(sentFile.size)})` : '']
+    const userText = [
+      text,
+      sentFile ? `\u{1F4CE} ${sentFile.name} (${formatSize(sentFile.size)})` : '',
+    ]
       .filter(Boolean)
       .join('\n');
 
@@ -116,11 +146,10 @@ export function WorkflowChat({
 
       const data = await res.json();
       const replyText: string = data.reply ?? t('chat.emptyReply');
-      setMessages((prev) => [
-        ...prev,
-        { id: crypto.randomUUID(), role: 'assistant', text: replyText },
-      ]);
+      const replyId = crypto.randomUUID();
+      setMessages((prev) => [...prev, { id: replyId, role: 'assistant', text: replyText }]);
       onKbMatches?.(Array.isArray(data.kbMatches) ? data.kbMatches : []);
+      onAnalysis?.(replyText, replyId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setMessages((prev) => [
@@ -149,21 +178,37 @@ export function WorkflowChat({
     setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 1500);
   };
 
+  const requestSave = async (m: Message) => {
+    if (!onSaveRequest || savingId) return;
+    setSavingId(m.id);
+    try {
+      await onSaveRequest(m.text, m.id);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const width = expanded ? EXPANDED_W : BASE_W;
+  const height = expanded ? EXPANDED_H : BASE_H;
+
   return (
-    <div className="w-[360px] h-[460px] flex flex-col bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden relative">
+    <div
+      style={{ width, height }}
+      className="flex flex-col bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden relative transition-[width,height] duration-300 ease-out"
+    >
       <div className="absolute inset-0 bg-gradient-to-b from-[#22ff88]/5 to-transparent pointer-events-none opacity-50" />
 
       {/* Header — drag handle */}
       <div
         onMouseDown={onHeaderMouseDown}
-        className="px-4 py-3 border-b border-white/10 flex items-center gap-3 bg-white/[0.02] cursor-grab active:cursor-grabbing relative z-10"
+        className="px-4 py-2.5 border-b border-white/10 flex items-center gap-3 bg-white/[0.02] cursor-grab active:cursor-grabbing relative z-10"
       >
-        <div className="w-8 h-8 rounded-full bg-[#22ff88]/20 flex items-center justify-center border border-[#22ff88]/30">
-          <Bot className="w-4 h-4 text-[#22ff88]" />
+        <div className="w-7 h-7 rounded-full bg-[#22ff88]/20 flex items-center justify-center border border-[#22ff88]/30 shrink-0">
+          <Bot className="w-3.5 h-3.5 text-[#22ff88]" />
         </div>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <h3 className="text-sm font-medium text-white">AI Metodist</h3>
-          <p className="text-xs text-white/50 flex items-center gap-1.5">
+          <p className="text-[11px] text-white/50 flex items-center gap-1.5">
             <span
               className={`w-1.5 h-1.5 rounded-full ${
                 isSending ? 'bg-[#22ff88] animate-pulse' : 'bg-[#22ff88]/60'
@@ -182,54 +227,99 @@ export function WorkflowChat({
             {t('chat.clear')}
           </button>
         )}
+        <button
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => setExpanded((v) => !v)}
+          className="text-white/60 hover:text-[#22ff88] p-1 rounded transition-colors"
+          aria-label={expanded ? t('chat.collapse') : t('chat.expand')}
+          title={expanded ? t('chat.collapse') : t('chat.expand')}
+        >
+          {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+        </button>
       </div>
 
       {/* Messages */}
-      <div ref={listRef} className="flex-1 p-4 overflow-y-auto flex flex-col gap-3 relative z-10">
+      <div
+        ref={listRef}
+        className="workflow-chat-scroll flex-1 p-4 overflow-y-auto flex flex-col gap-3 relative z-10"
+      >
         {messages.length === 0 && (
           <div className="text-center text-white/40 text-xs mt-6 px-2 leading-relaxed">
             {t('chat.emptyState')}
           </div>
         )}
 
-        {messages.map((m) => (
-          <div key={m.id} className={m.role === 'user' ? 'self-end max-w-[85%]' : 'self-start max-w-[92%]'}>
+        {messages.map((m) => {
+          const isAssistant = m.role === 'assistant';
+          const alreadySaved = savedIds?.has(m.id) === true;
+          return (
             <div
-              className={
-                m.role === 'user'
-                  ? 'bg-[#22ff88]/10 border border-[#22ff88]/20 rounded-2xl rounded-tr-sm px-3.5 py-2 text-sm text-white leading-relaxed whitespace-pre-wrap break-words'
-                  : m.role === 'error'
-                  ? 'bg-red-900/40 border border-red-500/30 rounded-2xl rounded-tl-sm px-3.5 py-2 text-sm text-red-100 whitespace-pre-wrap break-words'
-                  : 'bg-white/[0.06] border border-white/10 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm text-white/90 break-words chat-md'
-              }
+              key={m.id}
+              className={m.role === 'user' ? 'self-end max-w-[85%]' : 'self-start max-w-[92%]'}
             >
-              {m.role === 'assistant' ? (
-                <>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
-                  <div className="flex justify-end mt-1.5 -mb-0.5">
-                    <button
-                      onClick={() => copyMessage(m.id, m.text)}
-                      className="text-white/40 hover:text-white/80 text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors"
-                      title={t('chat.copy')}
-                    >
-                      {copiedId === m.id ? (
-                        <>
-                          <Check size={12} /> {t('chat.copied')}
-                        </>
-                      ) : (
-                        <>
-                          <Copy size={12} /> {t('chat.copy')}
-                        </>
+              <div
+                className={
+                  m.role === 'user'
+                    ? 'bg-[#22ff88]/10 border border-[#22ff88]/20 rounded-2xl rounded-tr-sm px-3.5 py-2 text-sm text-white leading-relaxed whitespace-pre-wrap break-words'
+                    : m.role === 'error'
+                    ? 'bg-red-900/40 border border-red-500/30 rounded-2xl rounded-tl-sm px-3.5 py-2 text-sm text-red-100 whitespace-pre-wrap break-words'
+                    : 'bg-white/[0.06] border border-white/10 rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm text-white/90 break-words chat-md'
+                }
+              >
+                {isAssistant ? (
+                  <>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                    <div className="flex justify-end gap-2 mt-1.5 -mb-0.5">
+                      <button
+                        onClick={() => copyMessage(m.id, m.text)}
+                        className="text-white/40 hover:text-white/80 text-[11px] flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors"
+                        title={t('chat.copy')}
+                      >
+                        {copiedId === m.id ? (
+                          <>
+                            <Check size={11} /> {t('chat.copied')}
+                          </>
+                        ) : (
+                          <>
+                            <Copy size={11} /> {t('chat.copy')}
+                          </>
+                        )}
+                      </button>
+                      {onSaveRequest && (
+                        <button
+                          onClick={() => requestSave(m)}
+                          disabled={alreadySaved || savingId === m.id}
+                          className={`text-[11px] flex items-center gap-1 px-2 py-0.5 rounded border transition-colors ${
+                            alreadySaved
+                              ? 'text-[#22ff88]/70 border-[#22ff88]/30 bg-[#22ff88]/5'
+                              : 'text-[#22ff88] border-[#22ff88]/40 hover:bg-[#22ff88]/10'
+                          }`}
+                          title="Save as Word (.docx)"
+                        >
+                          {savingId === m.id ? (
+                            <>
+                              <Loader2 size={11} className="animate-spin" /> Saving…
+                            </>
+                          ) : alreadySaved ? (
+                            <>
+                              <Check size={11} /> Saved
+                            </>
+                          ) : (
+                            <>
+                              <Save size={11} /> Save as Word?
+                            </>
+                          )}
+                        </button>
                       )}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                m.text
-              )}
+                    </div>
+                  </>
+                ) : (
+                  m.text
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {isSending && (
           <div className="self-start">
@@ -257,7 +347,13 @@ export function WorkflowChat({
             </button>
           </div>
         )}
-        <input ref={fileInputRef} type="file" accept={ACCEPT} onChange={onFileInput} className="hidden" />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={ACCEPT}
+          onChange={onFileInput}
+          className="hidden"
+        />
         <div className="flex items-end gap-2">
           <button
             onClick={() => fileInputRef.current?.click()}

@@ -141,6 +141,29 @@ export default function App() {
           background: rgba(255, 255, 255, 0.2);
         }
 
+        /* Workflow chat scrollbar — dark + green accent */
+        .workflow-chat-scroll::-webkit-scrollbar {
+          width: 8px;
+        }
+        .workflow-chat-scroll::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.02);
+          border-radius: 8px;
+          margin: 4px 0;
+        }
+        .workflow-chat-scroll::-webkit-scrollbar-thumb {
+          background: linear-gradient(180deg, rgba(34,255,136,0.35), rgba(34,255,136,0.15));
+          border-radius: 8px;
+          border: 1px solid rgba(34,255,136,0.25);
+          box-shadow: 0 0 6px rgba(34,255,136,0.18) inset;
+        }
+        .workflow-chat-scroll::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(180deg, rgba(34,255,136,0.55), rgba(34,255,136,0.3));
+        }
+        .workflow-chat-scroll {
+          scrollbar-color: rgba(34,255,136,0.35) rgba(255,255,255,0.04);
+          scrollbar-width: thin;
+        }
+
         .chat-md p { margin: 0.35rem 0; line-height: 1.5; }
         .chat-md p:first-child { margin-top: 0; }
         .chat-md p:last-child { margin-bottom: 0; }
