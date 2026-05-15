@@ -258,8 +258,14 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
     const kbFoldersBaseX = cx + 200;
     const kbFoldersRightSpace = Math.max(0, w - kbFoldersBaseX - 224);
     const kbFoldersX = Math.min(w - 264, kbFoldersBaseX + kbFoldersRightSpace * 0.3);
-    // Action tugmalari KB ning o'ng tomonida, vertikal ketma-ketlikda
-    const actionX = Math.min(w - 144 - 12, kbX + 192 + 12);
+    // Action tugmalari (Create / Add): KB ning o'ng tomoni — boshlang'ich nuqta,
+    // keyin canvas eniga nisbatan 20% qo'shimcha o'ngga suriladi (kerak bo'lsa
+    // o'ng devorga 12px masofada cheklanadi). Bu KB siljishidan mustaqil.
+    const minActionX = kbX + 192 + 12;
+    const actionX = Math.max(
+      minActionX,
+      Math.min(w - 144 - 12, minActionX + w * 0.2)
+    );
     setPositions({
       input: { x: inputX, y: 170 },
       agent: { x: cx - 120, y: 130 },
