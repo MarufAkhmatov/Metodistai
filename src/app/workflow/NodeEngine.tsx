@@ -23,6 +23,8 @@ import {
   type KbFolder,
 } from './WorkflowChat';
 import { useLang } from '../i18n';
+import { CreateFolderModal } from '../components/CreateFolderModal';
+import { AddFilesModal } from '../components/AddFilesModal';
 
 interface NodePosition {
   x: number;
@@ -111,81 +113,8 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
 
   // --- Create folders / Add files modal state ---
   const [showCreateFolder, setShowCreateFolder] = useState(false);
-  const [createFolderName, setCreateFolderName] = useState('');
-  const [createFolderError, setCreateFolderError] = useState<string | null>(null);
-  const [creatingFolder, setCreatingFolder] = useState(false);
-
   const [showAddFiles, setShowAddFiles] = useState(false);
-  const [addFilesTarget, setAddFilesTarget] = useState('');
-  const [addFilesError, setAddFilesError] = useState<string | null>(null);
-  const [addFilesUploading, setAddFilesUploading] = useState(false);
-  const addFilesInputRef = useRef<HTMLInputElement>(null);
   const dragMovedRef = useRef(false);
-
-  // Modal'lar uchun submit handlerlari
-  const submitCreateFolder = async () => {
-    const trimmed = createFolderName.trim();
-    if (!trimmed) {
-      setCreateFolderError(t('wf.create.errorEmpty'));
-      return;
-    }
-    setCreatingFolder(true);
-    setCreateFolderError(null);
-    try {
-      const res = await fetch('/api/folders/create', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: trimmed }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setCreateFolderError(data?.error || `HTTP ${res.status}`);
-        return;
-      }
-      refreshFolders();
-      setCreateFolderName('');
-      setShowCreateFolder(false);
-    } catch (e) {
-      setCreateFolderError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setCreatingFolder(false);
-    }
-  };
-
-  const submitAddFile = async () => {
-    const folder = addFilesTarget;
-    const file = addFilesInputRef.current?.files?.[0];
-    if (!folder) {
-      setAddFilesError(t('wf.add.errorSelectFolder'));
-      return;
-    }
-    if (!file) {
-      setAddFilesError(t('wf.add.errorSelectFile'));
-      return;
-    }
-    setAddFilesUploading(true);
-    setAddFilesError(null);
-    try {
-      const form = new FormData();
-      form.append('file', file);
-      const res = await fetch(`/api/folders/${encodeURIComponent(folder)}/upload`, {
-        method: 'POST',
-        body: form,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setAddFilesError(data?.error || `HTTP ${res.status}`);
-        return;
-      }
-      refreshFolders();
-      if (addFilesInputRef.current) addFilesInputRef.current.value = '';
-      setShowAddFiles(false);
-    } catch (e) {
-      setAddFilesError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setAddFilesUploading(false);
-    }
-  };
 
   // --- Save / archive state ---
   type Analysis = { id: string; text: string };
@@ -1098,191 +1027,17 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
       </div>
       {/* /scaled scene wrapper */}
 
-      {/* Create folder modal — Lokal KB papkasida yangi (bo'sh) papka yaratadi */}
-      <AnimatePresence>
-        {showCreateFolder && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-6"
-            onClick={() => {
-              if (!creatingFolder) setShowCreateFolder(false);
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <motion.div
-              initial={{ y: 10, scale: 0.96, opacity: 0 }}
-              animate={{ y: 0, scale: 1, opacity: 1 }}
-              exit={{ y: 10, scale: 0.96, opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-[420px] bg-[#0a0a0a] border border-[#22ff88]/30 rounded-2xl p-5 shadow-[0_24px_60px_rgba(0,0,0,0.6)]"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-[#22ff88]/15 border border-[#22ff88]/30 flex items-center justify-center">
-                    <Folder className="w-4 h-4 text-[#22ff88]" />
-                  </div>
-                  <h2 className="text-base font-semibold text-white">{t('wf.create.title')}</h2>
-                </div>
-                <button
-                  onClick={() => !creatingFolder && setShowCreateFolder(false)}
-                  className="text-white/50 hover:text-white p-1 rounded"
-                  aria-label={t('wf.common.close')}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-              <p className="text-xs text-white/55 mb-3 leading-relaxed">{t('wf.create.desc')}</p>
-              <input
-                autoFocus
-                value={createFolderName}
-                onChange={(e) => {
-                  setCreateFolderName(e.target.value);
-                  if (createFolderError) setCreateFolderError(null);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitCreateFolder();
-                  if (e.key === 'Escape' && !creatingFolder) setShowCreateFolder(false);
-                }}
-                placeholder={t('wf.create.placeholder')}
-                className="w-full bg-black/50 border border-white/10 focus:border-[#22ff88]/50 focus:ring-1 focus:ring-[#22ff88]/40 outline-none rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30"
-              />
-              {createFolderError && (
-                <p className="text-[12px] text-red-300 mt-2">{createFolderError}</p>
-              )}
-              <div className="flex justify-end gap-2 mt-4">
-                <button
-                  onClick={() => setShowCreateFolder(false)}
-                  disabled={creatingFolder}
-                  className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 text-sm transition-colors"
-                >
-                  {t('wf.common.cancel')}
-                </button>
-                <button
-                  onClick={submitCreateFolder}
-                  disabled={creatingFolder || !createFolderName.trim()}
-                  className="px-4 py-2 rounded-xl bg-[#22ff88] hover:bg-[#22ff88]/90 disabled:bg-white/10 disabled:text-white/30 text-black text-sm font-semibold flex items-center gap-1.5 transition-colors"
-                >
-                  {creatingFolder ? (
-                    <>
-                      <RotateCcw size={13} className="animate-spin" /> {t('wf.create.submitting')}
-                    </>
-                  ) : (
-                    <>
-                      <Folder size={13} /> {t('wf.create.submit')}
-                    </>
-                  )}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Add files modal — mavjud papkalardan birini tanlab fayl yuklash */}
-      <AnimatePresence>
-        {showAddFiles && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm p-6"
-            onClick={() => {
-              if (!addFilesUploading) setShowAddFiles(false);
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <motion.div
-              initial={{ y: 10, scale: 0.96, opacity: 0 }}
-              animate={{ y: 0, scale: 1, opacity: 1 }}
-              exit={{ y: 10, scale: 0.96, opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-[460px] bg-[#0a0a0a] border border-[#22ff88]/30 rounded-2xl p-5 shadow-[0_24px_60px_rgba(0,0,0,0.6)]"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-[#22ff88]/15 border border-[#22ff88]/30 flex items-center justify-center">
-                    <FileIcon className="w-4 h-4 text-[#22ff88]" />
-                  </div>
-                  <h2 className="text-base font-semibold text-white">{t('wf.add.title')}</h2>
-                </div>
-                <button
-                  onClick={() => !addFilesUploading && setShowAddFiles(false)}
-                  className="text-white/50 hover:text-white p-1 rounded"
-                  aria-label={t('wf.common.close')}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-              <p className="text-xs text-white/55 mb-3 leading-relaxed">{t('wf.add.desc')}</p>
-
-              <label className="block text-[11px] uppercase tracking-wider text-white/40 font-medium mb-1">
-                {t('wf.add.targetLabel')}
-              </label>
-              <select
-                value={addFilesTarget}
-                onChange={(e) => {
-                  setAddFilesTarget(e.target.value);
-                  if (addFilesError) setAddFilesError(null);
-                }}
-                className="w-full bg-black/50 border border-white/10 focus:border-[#22ff88]/50 focus:ring-1 focus:ring-[#22ff88]/40 outline-none rounded-xl px-3 py-2.5 text-sm text-white mb-3"
-              >
-                <option value="" disabled>
-                  {kbFolders.length === 0 ? t('wf.add.emptyHint') : t('wf.add.selectHint')}
-                </option>
-                {kbFolders.map((f) => (
-                  <option key={f.name} value={f.name}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
-
-              <label className="block text-[11px] uppercase tracking-wider text-white/40 font-medium mb-1">
-                {t('wf.add.fileLabel')}
-              </label>
-              <input
-                ref={addFilesInputRef}
-                type="file"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.md"
-                onChange={() => addFilesError && setAddFilesError(null)}
-                className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-sm text-white/80 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-[#22ff88]/15 file:text-[#22ff88] file:text-xs file:font-medium file:cursor-pointer hover:file:bg-[#22ff88]/25"
-              />
-
-              {addFilesError && (
-                <p className="text-[12px] text-red-300 mt-2">{addFilesError}</p>
-              )}
-
-              <div className="flex justify-end gap-2 mt-4">
-                <button
-                  onClick={() => setShowAddFiles(false)}
-                  disabled={addFilesUploading}
-                  className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 text-sm transition-colors"
-                >
-                  {t('wf.common.cancel')}
-                </button>
-                <button
-                  onClick={submitAddFile}
-                  disabled={addFilesUploading || !addFilesTarget || kbFolders.length === 0}
-                  className="px-4 py-2 rounded-xl bg-[#22ff88] hover:bg-[#22ff88]/90 disabled:bg-white/10 disabled:text-white/30 text-black text-sm font-semibold flex items-center gap-1.5 transition-colors"
-                >
-                  {addFilesUploading ? (
-                    <>
-                      <RotateCcw size={13} className="animate-spin" /> {t('wf.add.submitting')}
-                    </>
-                  ) : (
-                    <>
-                      <FileIcon size={13} /> {t('wf.add.submit')}
-                    </>
-                  )}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Create folder / Add files modals — umumiy komponentlardan foydalanish */}
+      <CreateFolderModal
+        open={showCreateFolder}
+        onClose={() => setShowCreateFolder(false)}
+        onSuccess={refreshFolders}
+      />
+      <AddFilesModal
+        open={showAddFiles}
+        onClose={() => setShowAddFiles(false)}
+        onSuccess={refreshFolders}
+      />
     </div>
   );
 }

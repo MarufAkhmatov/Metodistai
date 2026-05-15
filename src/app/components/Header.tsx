@@ -1,23 +1,26 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router';
 import {
   Menu,
   Search,
   Calendar,
-  Copy,
-  ArrowUpRight,
+  Clock,
+  RefreshCw,
+  Maximize,
+  Minimize,
   Settings,
   Bell,
-  ChevronDown,
-  Download,
-  CheckSquare,
-  Plus,
+  FolderPlus,
+  FilePlus,
   Folder,
-  Tag,
-  X
-} from "lucide-react";
-import { useLang } from "../i18n";
-import type { Lang } from "../i18n";
+  Monitor,
+  Smartphone,
+  X,
+} from 'lucide-react';
+import { useLang, LOCALE_BY_LANG } from '../i18n';
+import type { Lang } from '../i18n';
+import { CreateFolderModal } from './CreateFolderModal';
+import { AddFilesModal } from './AddFilesModal';
 
 interface HeaderProps {
   activeIndex?: number;
@@ -34,17 +37,153 @@ const navPillClass = ({ isActive }: { isActive: boolean }) =>
       : 'text-white/60 hover:text-white'
   }`;
 
+function formatLastActive(
+  diffMs: number,
+  t: (key: string, params?: Record<string, string | number>) => string
+): string {
+  if (diffMs < 5000) return t('header.now');
+  if (diffMs < 60_000) return t('header.activeSecondsAgo', { s: Math.floor(diffMs / 1000) });
+  if (diffMs < 3_600_000) return t('header.activeMinutesAgo', { m: Math.floor(diffMs / 60_000) });
+  return t('header.activeHoursAgo', { h: Math.floor(diffMs / 3_600_000) });
+}
+
 export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: HeaderProps) {
   const { lang, setLang, t } = useLang();
+  const locale = LOCALE_BY_LANG[lang];
+
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isLangOpen, setIsLangOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // --- Real-time clock (also drives "last active" relative label) ---
+  const [now, setNow] = useState<Date>(() => new Date());
+  useEffect(() => {
+    // Sekundi 30s — soat HH:MM va "last active" yangilanishi uchun yetarli.
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // --- Last active tracking ---
+  const lastActiveRef = useRef<number>(Date.now());
+  useEffect(() => {
+    const handler = () => {
+      lastActiveRef.current = Date.now();
+    };
+    let throttle = 0;
+    const throttled = () => {
+      const t = Date.now();
+      if (t - throttle > 3000) {
+        throttle = t;
+        handler();
+      }
+    };
+    window.addEventListener('mousemove', throttled);
+    window.addEventListener('keydown', handler);
+    window.addEventListener('click', handler);
+    return () => {
+      window.removeEventListener('mousemove', throttled);
+      window.removeEventListener('keydown', handler);
+      window.removeEventListener('click', handler);
+    };
+  }, []);
+
+  // --- Live KB folder count (excluding the Archive folder) ---
+  const [kbCount, setKbCount] = useState<number | null>(null);
+  const fetchKb = () => {
+    fetch('/api/folders?includeEmpty=1')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.folders)) {
+          setKbCount(
+            data.folders.filter((f: { name: string }) => f.name !== 'Archive folder').length
+          );
+        }
+      })
+      .catch(() => {});
+  };
+  useEffect(() => {
+    fetchKb();
+    const id = setInterval(fetchKb, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // --- Fullscreen toggle ---
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(
+    typeof document !== 'undefined' && !!document.fullscreenElement
+  );
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  };
+
+  // --- Modals (Create folder / Add files) ---
+  const [showCreate, setShowCreate] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+
+  // --- Refresh: re-fetch KB folder count + ping save/archive endpoints to warm caches ---
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        fetch('/api/folders?includeEmpty=1').then((r) => r.ok ? r.json() : null).then((d) => {
+          if (d && Array.isArray(d.folders)) {
+            setKbCount(
+              d.folders.filter((f: { name: string }) => f.name !== 'Archive folder').length
+            );
+          }
+        }),
+        fetch('/api/archive/files').catch(() => {}),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // --- Viewport toggle (Desktop / Mobile preview) ---
+  const [viewportMode, setViewportMode] = useState<'desktop' | 'mobile'>('desktop');
+  const mobileWinRef = useRef<Window | null>(null);
+  const openMobilePreview = () => {
+    if (mobileWinRef.current && !mobileWinRef.current.closed) {
+      mobileWinRef.current.focus();
+      setViewportMode('mobile');
+      return;
+    }
+    const win = window.open(
+      window.location.href,
+      'metodistai-mobile-preview',
+      'width=410,height=860,resizable=yes,scrollbars=yes'
+    );
+    if (win) mobileWinRef.current = win;
+    setViewportMode('mobile');
+  };
+  const setDesktopView = () => {
+    if (mobileWinRef.current && !mobileWinRef.current.closed) {
+      try {
+        mobileWinRef.current.close();
+      } catch {}
+    }
+    setViewportMode('desktop');
+  };
+
+  // --- Display strings ---
+  const dateStr = now.toLocaleDateString(locale, { day: 'numeric', month: 'long' });
+  const timeStr = now.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  const lastActiveMs = now.getTime() - lastActiveRef.current;
+  const lastActiveStr = formatLastActive(lastActiveMs, t);
 
   const handleFolderClick = (index: number) => {
-    if (setActiveIndex) {
-      setActiveIndex(index);
-    }
+    if (setActiveIndex) setActiveIndex(index);
     setIsDropdownOpen(false);
     setIsMobileMenuOpen(false);
   };
@@ -52,14 +191,9 @@ export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: Header
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchQuery(value);
-
     if (value.trim() && setActiveIndex) {
-      const matchIndex = folders.findIndex(f => 
-        f.toLowerCase().includes(value.toLowerCase())
-      );
-      if (matchIndex !== -1) {
-        setActiveIndex(matchIndex);
-      }
+      const matchIndex = folders.findIndex((f) => f.toLowerCase().includes(value.toLowerCase()));
+      if (matchIndex !== -1) setActiveIndex(matchIndex);
     }
   };
 
@@ -68,10 +202,10 @@ export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: Header
       <div className="w-full flex flex-col px-6 py-4 space-y-6 relative z-50">
         {/* Top Nav */}
         <div className="flex items-center justify-between">
-          {/* Left Actions */}
+          {/* Left: M logo + Menu + page nav */}
           <div className="flex items-center space-x-3">
             <button className="w-10 h-10 bg-white text-black rounded-full flex items-center justify-center font-bold text-xl">
-              R
+              M
             </button>
             <button
               onClick={() => setIsMobileMenuOpen(true)}
@@ -79,7 +213,6 @@ export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: Header
             >
               <Menu size={18} />
             </button>
-            {/* Page navigation (desktop) */}
             <nav className="hidden md:flex items-center bg-white/5 border border-white/10 rounded-full p-1">
               <NavLink to="/" end className={navPillClass}>
                 {t('nav.metodist')}
@@ -92,49 +225,60 @@ export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: Header
 
           {/* Center Timeline Pill (Desktop only) */}
           <div className="hidden md:flex items-center bg-white/5 border border-white/10 rounded-full p-1.5 backdrop-blur-md">
-            {/* Date section */}
-            <div className="flex items-center space-x-2 px-4 border-r border-white/10">
+            {/* Date — bugungi sana, real time */}
+            <div
+              className="flex items-center space-x-2 px-4 border-r border-white/10"
+              title={t('header.today')}
+            >
               <Calendar size={14} className="text-white/50" />
-              <span className="text-sm font-medium text-white/80">{t('header.date')}</span>
-            </div>
-            
-            {/* Active Status section */}
-            <div className="flex items-center px-2 border-r border-white/10">
-              <div className="flex items-center -space-x-2">
-                <img src="https://images.unsplash.com/photo-1610387694365-19fafcc86d86?w=64&h=64&fit=crop&crop=faces" className="w-6 h-6 rounded-full border-2 border-[#0a0a0a]" alt="User" />
-                <img src="https://images.unsplash.com/photo-1629507208649-70919ca33793?w=64&h=64&fit=crop&crop=faces" className="w-6 h-6 rounded-full border-2 border-[#0a0a0a]" alt="User" />
-              </div>
-              <span className="text-xs text-white/60 ml-3 font-medium">{t('header.youPlus')}</span>
-              <div className="w-4 h-4 ml-3 rounded-sm bg-blue-500/20 flex items-center justify-center text-[10px]">
-                <div className="w-0 h-0 border-l-[3px] border-r-[3px] border-b-[5px] border-transparent border-b-green-400 rotate-90" />
-              </div>
+              <span className="text-sm font-medium text-white/80">{dateStr}</span>
             </div>
 
-            {/* Event section */}
+            {/* Last active */}
+            <div
+              className="flex items-center space-x-2 px-3 border-r border-white/10"
+              title={t('header.lastActive')}
+            >
+              <div className="relative w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]">
+                {lastActiveMs < 5000 && (
+                  <span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-60" />
+                )}
+              </div>
+              <span className="text-xs text-white/60 font-medium">{lastActiveStr}</span>
+            </div>
+
+            {/* Current time + KB info — yashil pill */}
             <div className="flex items-center px-4 bg-emerald-900/30 rounded-full py-1 ml-2 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.15)] relative">
-              <span className="text-xs text-emerald-400 font-medium mr-3">09:00 AM</span>
-              <div className="flex items-center -space-x-2 mr-3">
-                <img src="https://images.unsplash.com/photo-1672675611932-9d722165f0ad?w=64&h=64&fit=crop&crop=faces" className="w-6 h-6 rounded-full border-2 border-emerald-900" alt="User" />
-                <img src="https://images.unsplash.com/photo-1614023342667-6f060e9d1e04?w=64&h=64&fit=crop&crop=faces" className="w-6 h-6 rounded-full border-2 border-emerald-900" alt="User" />
-              </div>
-              <span className="text-sm font-medium text-emerald-100">{t('header.auditReview')}</span>
-              <div className="w-4 h-4 ml-4 rounded-sm bg-blue-500/20 flex items-center justify-center text-[10px]">
-                <div className="w-0 h-0 border-l-[3px] border-r-[3px] border-b-[5px] border-transparent border-b-yellow-400 -rotate-90" />
-              </div>
-              <span className="text-xs text-emerald-400/70 font-medium ml-3">10:00 AM</span>
-              <div className="flex items-center -space-x-2 ml-3">
-                <img src="https://images.unsplash.com/photo-1610387694365-19fafcc86d86?w=64&h=64&fit=crop&crop=faces" className="w-6 h-6 rounded-full border-2 border-emerald-900 opacity-50" alt="User" />
-                <img src="https://images.unsplash.com/photo-1629507208649-70919ca33793?w=64&h=64&fit=crop&crop=faces" className="w-6 h-6 rounded-full border-2 border-emerald-900 opacity-50" alt="User" />
-              </div>
+              <Clock size={12} className="text-emerald-400 mr-2" />
+              <span className="text-xs text-emerald-400 font-medium tabular-nums mr-3">
+                {timeStr}
+              </span>
+              <span className="text-sm font-medium text-emerald-100">
+                {kbCount === null
+                  ? t('header.kbBadgeLoading')
+                  : t('header.kbBadge', { count: kbCount })}
+              </span>
               <div className="absolute -bottom-2 left-1/2 w-2 h-2 bg-emerald-500 rounded-full blur-sm" />
             </div>
 
+            {/* Action buttons: Refresh + Fullscreen */}
             <div className="flex items-center space-x-2 px-3">
-              <button className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-white/50">
-                <Copy size={14} />
+              <button
+                onClick={handleRefresh}
+                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-white/50 hover:text-emerald-400 disabled:opacity-50"
+                aria-label={t('header.refresh')}
+                title={t('header.refreshTitle')}
+                disabled={refreshing}
+              >
+                <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
               </button>
-              <button className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-white/50">
-                <ArrowUpRight size={14} />
+              <button
+                onClick={toggleFullscreen}
+                className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-white/50 hover:text-emerald-400"
+                aria-label={isFullscreen ? t('header.fsExit') : t('header.fsEnter')}
+                title={isFullscreen ? t('header.fsExit') : t('header.fsEnter')}
+              >
+                {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
               </button>
             </div>
           </div>
@@ -186,7 +330,7 @@ export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: Header
         <div className="hidden md:flex items-center justify-between -translate-y-[20%] relative z-50">
           <div className="flex items-center space-x-3">
             <div className="relative">
-              <button 
+              <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 className="flex items-center justify-center space-x-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-sm text-white/80 transition-colors"
               >
@@ -203,8 +347,8 @@ export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: Header
                         key={idx}
                         onClick={() => handleFolderClick(idx)}
                         className={`w-full text-left px-4 py-2 text-sm transition-colors flex items-center justify-between shrink-0 ${
-                          isActive 
-                            ? 'bg-emerald-500/20 text-emerald-400 font-medium' 
+                          isActive
+                            ? 'bg-emerald-500/20 text-emerald-400 font-medium'
                             : 'text-white/70 hover:bg-white/5 hover:text-white'
                         }`}
                       >
@@ -227,42 +371,67 @@ export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: Header
                 className="bg-transparent border-none outline-none text-sm text-white placeholder:text-white/40 w-full"
               />
             </div>
-            
-            <button className="flex items-center space-x-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-sm text-white/80 transition-colors">
-              <Folder size={16} className="text-white/50" />
-              <span>{t('header.small')}</span>
-              <ChevronDown size={14} className="text-white/50 ml-1" />
-            </button>
+
+            {/* Desktop / Mobile viewport toggle */}
+            <div
+              className="flex items-center bg-white/5 border border-white/10 rounded-full p-0.5"
+              title={t('header.mobilePreviewTitle')}
+            >
+              <button
+                onClick={setDesktopView}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  viewportMode === 'desktop'
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : 'text-white/60 hover:text-white'
+                }`}
+              >
+                <Monitor size={13} />
+                <span>{t('header.desktop')}</span>
+              </button>
+              <button
+                onClick={openMobilePreview}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  viewportMode === 'mobile'
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : 'text-white/60 hover:text-white'
+                }`}
+              >
+                <Smartphone size={13} />
+                <span>{t('header.mobile')}</span>
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center space-x-3">
-            <button className="flex items-center space-x-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-sm text-white/80 transition-colors">
-              <Download size={16} className="text-white/50" />
-              <span>{t('header.export')}</span>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="flex items-center space-x-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/40 rounded-full text-sm text-white/80 hover:text-white transition-colors"
+            >
+              <FolderPlus size={16} className="text-emerald-400" />
+              <span>{t('header.createFolders')}</span>
             </button>
-            <button className="flex items-center space-x-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-sm text-white/80 transition-colors">
-              <CheckSquare size={16} className="text-white/50" />
-              <span>{t('header.viewTasks')}</span>
-            </button>
-            <button className="flex items-center space-x-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-sm text-white/80 transition-colors">
-              <Plus size={16} className="text-white/50" />
-              <span>{t('header.addContracts')}</span>
+            <button
+              onClick={() => setShowAdd(true)}
+              className="flex items-center space-x-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-emerald-500/40 rounded-full text-sm text-white/80 hover:text-white transition-colors"
+            >
+              <FilePlus size={16} className="text-emerald-400" />
+              <span>{t('header.addFiles')}</span>
             </button>
           </div>
         </div>
       </div>
 
       {/* Mobile Fullscreen Menu Overlay */}
-      <div 
+      <div
         className={`fixed inset-0 bg-[#030303]/95 backdrop-blur-xl z-[100] transition-all duration-300 md:hidden flex flex-col ${
           isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
       >
         <div className="flex items-center justify-between px-6 py-4">
           <button className="w-10 h-10 bg-white text-black rounded-full flex items-center justify-center font-bold text-xl">
-            R
+            M
           </button>
-          <button 
+          <button
             onClick={() => setIsMobileMenuOpen(false)}
             className="w-10 h-10 bg-white/5 border border-white/10 rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"
           >
@@ -356,8 +525,8 @@ export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: Header
                     key={idx}
                     onClick={() => handleFolderClick(idx)}
                     className={`text-left px-4 py-3 text-sm rounded-xl transition-colors flex items-center justify-between ${
-                      isActive 
-                        ? 'bg-emerald-500/20 text-emerald-400 font-medium border border-emerald-500/30' 
+                      isActive
+                        ? 'bg-emerald-500/20 text-emerald-400 font-medium border border-emerald-500/30'
                         : 'bg-white/5 text-white/70 hover:bg-white/10 border border-white/5'
                     }`}
                   >
@@ -372,17 +541,45 @@ export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: Header
           <div className="flex flex-col space-y-4">
             <h3 className="text-sm font-medium text-white/50 uppercase tracking-wider">{t('header.quickActions')}</h3>
             <div className="flex flex-col space-y-2">
-              <button className="flex items-center space-x-3 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-white/80 transition-colors">
-                <CheckSquare size={18} className="text-white/50" />
-                <span>{t('header.viewTasks')}</span>
+              <button
+                onClick={() => {
+                  setShowCreate(true);
+                  setIsMobileMenuOpen(false);
+                }}
+                className="flex items-center space-x-3 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-white/80 transition-colors"
+              >
+                <FolderPlus size={18} className="text-emerald-400" />
+                <span>{t('header.createFolders')}</span>
               </button>
-              <button className="flex items-center space-x-3 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-white/80 transition-colors">
-                <Plus size={18} className="text-white/50" />
-                <span>{t('header.addContracts')}</span>
+              <button
+                onClick={() => {
+                  setShowAdd(true);
+                  setIsMobileMenuOpen(false);
+                }}
+                className="flex items-center space-x-3 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-white/80 transition-colors"
+              >
+                <FilePlus size={18} className="text-emerald-400" />
+                <span>{t('header.addFiles')}</span>
               </button>
-              <button className="flex items-center space-x-3 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-white/80 transition-colors">
-                <Download size={18} className="text-white/50" />
-                <span>{t('header.exportData')}</span>
+              <button
+                onClick={() => {
+                  handleRefresh();
+                  setIsMobileMenuOpen(false);
+                }}
+                className="flex items-center space-x-3 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-white/80 transition-colors"
+              >
+                <RefreshCw size={18} className={`text-emerald-400 ${refreshing ? 'animate-spin' : ''}`} />
+                <span>{t('header.refresh')}</span>
+              </button>
+              <button
+                onClick={() => {
+                  openMobilePreview();
+                  setIsMobileMenuOpen(false);
+                }}
+                className="flex items-center space-x-3 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-white/80 transition-colors"
+              >
+                <Smartphone size={18} className="text-emerald-400" />
+                <span>{t('header.mobile')}</span>
               </button>
             </div>
           </div>
@@ -392,13 +589,9 @@ export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: Header
             <h3 className="text-sm font-medium text-white/50 uppercase tracking-wider">{t('header.account')}</h3>
             <div className="flex items-center justify-between bg-white/5 border border-white/5 rounded-2xl p-4">
               <div className="flex items-center space-x-3">
-                <div className="flex items-center -space-x-2">
-                  <img src="https://images.unsplash.com/photo-1610387694365-19fafcc86d86?w=64&h=64&fit=crop&crop=faces" className="w-8 h-8 rounded-full border-2 border-[#111]" alt="User" />
-                  <img src="https://images.unsplash.com/photo-1629507208649-70919ca33793?w=64&h=64&fit=crop&crop=faces" className="w-8 h-8 rounded-full border-2 border-[#111]" alt="User" />
-                </div>
                 <div>
                   <div className="text-sm font-medium text-white">{t('header.youTeam')}</div>
-                  <div className="text-xs text-white/50">{t('header.active', { count: 2 })}</div>
+                  <div className="text-xs text-white/50">{lastActiveStr}</div>
                 </div>
               </div>
               <div className="flex space-x-2">
@@ -414,6 +607,18 @@ export function Header({ activeIndex = 0, setActiveIndex, folders = [] }: Header
 
         </div>
       </div>
+
+      {/* Shared modals — Create folder / Add files */}
+      <CreateFolderModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onSuccess={fetchKb}
+      />
+      <AddFilesModal
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        onSuccess={fetchKb}
+      />
     </>
   );
 }
