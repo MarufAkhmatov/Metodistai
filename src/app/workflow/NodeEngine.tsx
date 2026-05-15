@@ -63,9 +63,12 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
     { id: 'c1', from: 'input', fromPort: 'right', to: 'agent', toPort: 'left' },
     { id: 'c2', from: 'agent', fromPort: 'right', to: 'kb', toPort: 'left' },
     { id: 'c3', from: 'chat', fromPort: 'top', to: 'agent', toPort: 'bottom' },
-    { id: 'c4', from: 'kb', fromPort: 'bottom', to: 'action_create', toPort: 'top' },
-    { id: 'c5', from: 'kb', fromPort: 'bottom', to: 'action_add', toPort: 'top' },
-    { id: 'c6', from: 'action_create', fromPort: 'bottom', to: 'kb_folders', toPort: 'top' },
+    // KB → Folders from KB (to'g'ridan-to'g'ri)
+    { id: 'c4', from: 'kb', fromPort: 'bottom', to: 'kb_folders', toPort: 'top' },
+    // KB → Create folders (alohida perexod)
+    { id: 'c5', from: 'kb', fromPort: 'bottom', to: 'action_create', toPort: 'top' },
+    // Create folders → Add files (ketma-ketlik)
+    { id: 'c6', from: 'action_create', fromPort: 'bottom', to: 'action_add', toPort: 'top' },
   ]);
 
   const [draggingConn, setDraggingConn] = useState<{ from: string; x: number; y: number; port: 'left' | 'right' | 'top' | 'bottom' } | null>(null);
@@ -162,6 +165,10 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
     const kbBaseX = cx + 200; // oldingi joy (KB w-[192px])
     const kbRightSpace = Math.max(0, w - kbBaseX - 192);
     const kbX = Math.min(w - 232, kbBaseX + kbRightSpace * 0.6); // 60% o'ng tomonga, kamida 40px gap
+    // Folders from KB papkasi 30% o'ngga surilgan (w-[224px])
+    const kbFoldersBaseX = cx + 200;
+    const kbFoldersRightSpace = Math.max(0, w - kbFoldersBaseX - 224);
+    const kbFoldersX = Math.min(w - 264, kbFoldersBaseX + kbFoldersRightSpace * 0.3);
     setPositions({
       input: { x: inputX, y: 170 },
       agent: { x: cx - 120, y: 130 },
@@ -171,8 +178,8 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
         y: Math.max(180, h - CHAT_BASE_H - 24),
       },
       action_create: { x: cx + 160, y: 260 },
-      action_add: { x: cx + 320, y: 260 },
-      kb_folders: { x: cx + 200, y: 360 },
+      action_add: { x: cx + 160, y: 340 }, // Create folders ostida (vertikal ketma-ketlik)
+      kb_folders: { x: kbFoldersX, y: 360 },
       archive: { x: Math.max(40, w - 220), y: Math.max(40, h - 220) },
     });
   }, []);
