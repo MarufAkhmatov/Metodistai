@@ -29,6 +29,8 @@ type WorkflowChatProps = {
   onSaveRequest?: (text: string, id: string) => Promise<{ ok: boolean }> | void;
   savedIds?: Set<string>;
   onHeaderMouseDown?: (e: React.MouseEvent) => void;
+  expanded?: boolean;
+  onExpandedChange?: (next: boolean) => void;
 };
 
 const STORAGE_KEY = 'metodistai.workflow.chat.v1';
@@ -36,12 +38,16 @@ const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const ACCEPT = '.pdf,.docx,.txt,.md';
 
 // Default base: oldingi 360×460 dan eni +30%, bo'yi -20%
-const BASE_W = 468;
-const BASE_H = 368;
+export const CHAT_BASE_W = 468;
+export const CHAT_BASE_H = 368;
 // Kengaytirilgan o'lcham: maydon ~3× (har bir o'lcham ×1.73)
 const EXPAND_FACTOR = 1.73;
-const EXPANDED_W = Math.round(BASE_W * EXPAND_FACTOR);
-const EXPANDED_H = Math.round(BASE_H * EXPAND_FACTOR);
+export const CHAT_EXPANDED_W = Math.round(CHAT_BASE_W * EXPAND_FACTOR);
+export const CHAT_EXPANDED_H = Math.round(CHAT_BASE_H * EXPAND_FACTOR);
+const BASE_W = CHAT_BASE_W;
+const BASE_H = CHAT_BASE_H;
+const EXPANDED_W = CHAT_EXPANDED_W;
+const EXPANDED_H = CHAT_EXPANDED_H;
 
 function loadHistory(): Message[] {
   try {
@@ -67,6 +73,8 @@ export function WorkflowChat({
   onSaveRequest,
   savedIds,
   onHeaderMouseDown,
+  expanded: expandedProp,
+  onExpandedChange,
 }: WorkflowChatProps) {
   const { t } = useLang();
   const [input, setInput] = useState('');
@@ -75,7 +83,13 @@ export function WorkflowChat({
   const [isSending, setIsSending] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const expanded = expandedProp !== undefined ? expandedProp : internalExpanded;
+  const toggleExpanded = () => {
+    const next = !expanded;
+    if (expandedProp === undefined) setInternalExpanded(next);
+    onExpandedChange?.(next);
+  };
   const listRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -229,7 +243,7 @@ export function WorkflowChat({
         )}
         <button
           onMouseDown={(e) => e.stopPropagation()}
-          onClick={() => setExpanded((v) => !v)}
+          onClick={toggleExpanded}
           className="text-white/60 hover:text-[#22ff88] p-1 rounded transition-colors"
           aria-label={expanded ? t('chat.collapse') : t('chat.expand')}
           title={expanded ? t('chat.collapse') : t('chat.expand')}

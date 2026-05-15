@@ -15,7 +15,13 @@ import {
   Minus,
   RotateCcw,
 } from 'lucide-react';
-import { WorkflowChat, type KbFolder } from './WorkflowChat';
+import {
+  WorkflowChat,
+  CHAT_BASE_W,
+  CHAT_BASE_H,
+  CHAT_EXPANDED_H,
+  type KbFolder,
+} from './WorkflowChat';
 
 interface NodePosition {
   x: number;
@@ -29,10 +35,6 @@ interface Connection {
   to: string;
   toPort: 'left' | 'right' | 'top' | 'bottom';
 }
-
-// Chat panel default geometry — port hisoblash uchun NodeEngine bilan sinxron.
-const CHAT_BASE_W = 468;
-const CHAT_BASE_H = 368;
 
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 1.6;
@@ -74,6 +76,24 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
   useEffect(() => {
     zoomRef.current = zoom;
   }, [zoom]);
+
+  // --- Chat expanded (lifted from WorkflowChat) — clamping uchun balandlik kerak ---
+  const [chatExpanded, setChatExpanded] = useState(false);
+
+  // --- Container o'lchamini kuzatish — chat'ni ekran tashqarisiga chiqib ketishidan saqlash uchun ---
+  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    const measure = () => {
+      const r = node.getBoundingClientRect();
+      setContainerSize({ w: r.width, h: r.height });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(node);
+    return () => ro.disconnect();
+  }, []);
 
   // --- Chat-driven workflow state ---
   const [chatFile, setChatFile] = useState<File | null>(null);
@@ -194,13 +214,23 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
     setDragId(id);
   };
 
+  // Render-vaqt pozitsiyasi: chat y'i container ichida bo'lishi uchun cheklanadi —
+  // shu qiymat ham nodeStyle, ham SVG portlari uchun ishlatiladi (chiziq aslida ko'ringan joyga uradi).
+  const currentChatH = chatExpanded ? CHAT_EXPANDED_H : CHAT_BASE_H;
+  const logicalH = containerSize.h > 0 ? containerSize.h / (zoom || 1) : 0;
+  const chatMaxY = logicalH > 0 ? Math.max(20, logicalH - currentChatH - 16) : Infinity;
+  const renderedPositions: Record<string, NodePosition> = {
+    ...positions,
+    chat: { x: positions.chat.x, y: Math.min(positions.chat.y, chatMaxY) },
+  };
+
   const nodeStyle = (id: string): React.CSSProperties => ({
-    transform: `translate(${positions[id].x}px, ${positions[id].y}px)`,
+    transform: `translate(${renderedPositions[id].x}px, ${renderedPositions[id].y}px)`,
   });
 
   // Dynamic port coordinates — kichraytirilgan tugunlarga moslangan.
   const getPortPos = (nodeId: string, port: 'left' | 'right' | 'top' | 'bottom') => {
-    const pos = positions[nodeId];
+    const pos = renderedPositions[nodeId];
     if (!pos) return { x: 0, y: 0 };
 
     if (nodeId === 'input') {
@@ -237,7 +267,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
 
   // Node markazi — flying animatsiya manbai uchun.
   const nodeCenter = (id: string): NodePosition => {
-    const pos = positions[id];
+    const pos = renderedPositions[id];
     if (!pos) return { x: 0, y: 0 };
     const sizes: Record<string, [number, number]> = {
       input: [176, 180],
@@ -678,7 +708,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
         </div>
       </div>
 
-      {/* 4. Chat */}
+      {/* 4. Chat — y har doim container ichida bo'lishi uchun cheklanadi (yuqorida hisoblangan) */}
       <div style={nodeStyle('chat')} className="absolute top-0 left-0 z-30">
         <div className="relative group">
           <div
@@ -686,6 +716,8 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
             className="absolute top-[-6px] left-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-[#22ff88] border-2 border-black/80 shadow-[0_0_10px_#22ff88] opacity-0 group-hover:opacity-100 transition-opacity cursor-crosshair z-40"
           />
           <WorkflowChat
+            expanded={chatExpanded}
+            onExpandedChange={setChatExpanded}
             onFileChange={setChatFile}
             onBusyChange={setChatBusy}
             onKbMatches={setKbMatches}
