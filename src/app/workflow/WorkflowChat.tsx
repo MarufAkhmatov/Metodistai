@@ -228,7 +228,7 @@ export function WorkflowChat({
                 isSending ? 'bg-[#22ff88] animate-pulse' : 'bg-[#22ff88]/60'
               }`}
             />
-            {isSending ? t('chat.thinking') : 'Online'}
+            {isSending ? t('chat.thinking') : t('wf.chat.online')}
           </p>
         </div>
         {messages.length > 0 && (
@@ -308,19 +308,19 @@ export function WorkflowChat({
                               ? 'text-[#22ff88]/70 border-[#22ff88]/30 bg-[#22ff88]/5'
                               : 'text-[#22ff88] border-[#22ff88]/40 hover:bg-[#22ff88]/10'
                           }`}
-                          title="Save as Word (.docx)"
+                          title={t('wf.chat.saveTitle')}
                         >
                           {savingId === m.id ? (
                             <>
-                              <Loader2 size={11} className="animate-spin" /> Saving…
+                              <Loader2 size={11} className="animate-spin" /> {t('wf.chat.saving')}
                             </>
                           ) : alreadySaved ? (
                             <>
-                              <Check size={11} /> Saved
+                              <Check size={11} /> {t('wf.chat.saved')}
                             </>
                           ) : (
                             <>
-                              <Save size={11} /> Save as Word?
+                              <Save size={11} /> {t('wf.chat.saveAsWord')}
                             </>
                           )}
                         </button>

@@ -22,6 +22,7 @@ import {
   CHAT_EXPANDED_H,
   type KbFolder,
 } from './WorkflowChat';
+import { useLang } from '../i18n';
 
 interface NodePosition {
   x: number;
@@ -41,6 +42,7 @@ const ZOOM_MAX = 1.6;
 const ZOOM_STEP = 0.1;
 
 export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: boolean; generatedItems?: number[] }) {
+  const { t } = useLang();
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Initial placeholder positions — useEffect orqali container o'lchamlariga qarab qayta sozlanadi.
@@ -124,7 +126,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
   const submitCreateFolder = async () => {
     const trimmed = createFolderName.trim();
     if (!trimmed) {
-      setCreateFolderError("Papka nomi bo'sh.");
+      setCreateFolderError(t('wf.create.errorEmpty'));
       return;
     }
     setCreatingFolder(true);
@@ -154,11 +156,11 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
     const folder = addFilesTarget;
     const file = addFilesInputRef.current?.files?.[0];
     if (!folder) {
-      setAddFilesError('Papkani tanlang.');
+      setAddFilesError(t('wf.add.errorSelectFolder'));
       return;
     }
     if (!file) {
-      setAddFilesError('Faylni tanlang.');
+      setAddFilesError(t('wf.add.errorSelectFile'));
       return;
     }
     setAddFilesUploading(true);
@@ -249,8 +251,9 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
     const inputX = Math.max(40, inputBaseX * 0.4); // 60% chap tomonga, kamida 40px gap
     const kbBaseX = cx + 200; // oldingi joy (KB w-[192px])
     const kbRightSpace = Math.max(0, w - kbBaseX - 192);
-    // KB endi 30% o'ngga (oldingi 60% emas) — action_create/add ga o'ng tomonidan joy qoldirish uchun
-    const kbX = Math.min(w - 232, kbBaseX + kbRightSpace * 0.3);
+    // KB endi 10% o'ngga (oldingi 30% dan 20% chap tomonga surilgan).
+    // action_create/add ga o'ng tomonidan joy qoldirish ham saqlangan.
+    const kbX = Math.min(w - 232, kbBaseX + kbRightSpace * 0.1);
     // Folders from KB papkasi 30% o'ngga surilgan (w-[224px])
     const kbFoldersBaseX = cx + 200;
     const kbFoldersRightSpace = Math.max(0, w - kbFoldersBaseX - 224);
@@ -534,8 +537,8 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
         <button
           onClick={() => setZoom((z) => clampZoom(z - ZOOM_STEP))}
           className="w-7 h-7 rounded-full hover:bg-white/10 text-white/70 hover:text-white flex items-center justify-center transition-colors"
-          aria-label="Zoom out"
-          title="Zoom out"
+          aria-label={t('wf.common.zoomOut')}
+          title={t('wf.common.zoomOut')}
         >
           <Minus size={14} />
         </button>
@@ -545,8 +548,8 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
         <button
           onClick={() => setZoom((z) => clampZoom(z + ZOOM_STEP))}
           className="w-7 h-7 rounded-full hover:bg-white/10 text-white/70 hover:text-white flex items-center justify-center transition-colors"
-          aria-label="Zoom in"
-          title="Zoom in"
+          aria-label={t('wf.common.zoomIn')}
+          title={t('wf.common.zoomIn')}
         >
           <Plus size={14} />
         </button>
@@ -554,8 +557,8 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
         <button
           onClick={() => setZoom(1)}
           className="w-7 h-7 rounded-full hover:bg-white/10 text-white/60 hover:text-[#22ff88] flex items-center justify-center transition-colors"
-          aria-label="Reset zoom"
-          title="Reset zoom"
+          aria-label={t('wf.common.zoomReset')}
+          title={t('wf.common.zoomReset')}
         >
           <RotateCcw size={12} />
         </button>
@@ -670,9 +673,9 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
           </div>
 
           <div className="text-center w-full">
-            <h3 className="text-[12px] font-medium text-white truncate">{hasFile ? chatFile!.name : 'New file to compare'}</h3>
+            <h3 className="text-[12px] font-medium text-white truncate">{hasFile ? chatFile!.name : t('wf.input.default')}</h3>
             <p className="text-[10px] text-white/40 mt-0.5">
-              {hasFile ? (chatBusy ? 'Analyzing…' : 'Ready for analysis') : 'Upload via chat'}
+              {hasFile ? (chatBusy ? t('wf.input.analyzing') : t('wf.input.ready')) : t('wf.input.upload')}
             </p>
           </div>
         </div>
@@ -729,12 +732,12 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
                   AI Metodist
                   {running && <CheckCircle className="w-3.5 h-3.5 text-[#22ff88]" />}
                 </h3>
-                <p className="text-[10px] text-white/50">Claude Agent (claude-3-5-sonnet)</p>
+                <p className="text-[10px] text-white/50">{t('wf.agent.subtitle')}</p>
               </div>
             </div>
 
             <div className="flex items-center gap-1.5 mt-1">
-              <span className="text-[9px] uppercase tracking-wider text-white/40 font-medium">{running ? 'Running' : 'Idle'}</span>
+              <span className="text-[9px] uppercase tracking-wider text-white/40 font-medium">{running ? t('wf.agent.running') : t('wf.agent.idle')}</span>
               <div
                 className={`w-1.5 h-1.5 rounded-full shadow-[0_0_8px_currentColor] ${
                   running ? 'bg-[#22ff88] text-[#22ff88] animate-pulse' : 'bg-white/30 text-transparent'
@@ -746,9 +749,9 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
           <div className="p-2.5 bg-white/[0.02]">
             <div className="space-y-1">
               {[
-                { name: 'Chat model', active: running },
-                { name: 'Connect', active: running },
-                { name: 'Tool (API)', active: false },
+                { name: t('wf.agent.chatModel'), active: running },
+                { name: t('wf.agent.connect'), active: running },
+                { name: t('wf.agent.toolApi'), active: false },
               ].map((tool, idx) => (
                 <div
                   key={idx}
@@ -804,9 +807,9 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
               </div>
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-white">Knowledge Base</h3>
+              <h3 className="text-sm font-semibold text-white">{t('wf.kb.title')}</h3>
               <p className="text-[11px] text-white/50 mt-0.5">
-                {folderCount === null ? 'Loading…' : `${folderCount} connected folders`}
+                {folderCount === null ? t('wf.kb.loading') : t('wf.kb.folders', { count: folderCount })}
               </p>
             </div>
           </div>
@@ -843,7 +846,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
           setShowCreateFolder(true);
         }}
         className="absolute top-0 left-0 z-10 w-[144px] cursor-grab active:cursor-grabbing"
-        title="Yangi papka yaratish"
+        title={t('wf.actions.createTip')}
       >
         <div className="relative group">
           {/* Left port — KB.right dan ulanish keladi */}
@@ -870,7 +873,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
             } text-[12px] font-medium transition-all shadow-lg backdrop-blur-md`}
           >
             <Folder size={13} className={running ? 'text-[#ffcc00]' : 'text-white/50 group-hover:text-[#22ff88]'} />
-            <span>Create folders</span>
+            <span>{t('wf.actions.create')}</span>
           </div>
         </div>
       </div>
@@ -884,7 +887,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
           setShowAddFiles(true);
         }}
         className="absolute top-0 left-0 z-10 w-[144px] cursor-grab active:cursor-grabbing"
-        title="Mavjud papkaga fayl qo'shish"
+        title={t('wf.actions.addTip')}
       >
         <div className="relative group">
           <div
@@ -900,7 +903,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
             } text-[12px] font-medium transition-all shadow-lg backdrop-blur-md`}
           >
             <FileIcon size={13} className={running ? 'text-[#ffcc00]' : 'text-white/50 group-hover:text-[#22ff88]'} />
-            <span>Add files</span>
+            <span>{t('wf.actions.add')}</span>
           </div>
         </div>
       </div>
@@ -918,7 +921,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
               onMouseDown={(e) => startNodeDrag(e, 'kb_folders')}
               className="text-[11px] font-semibold text-white/50 text-center mb-2 cursor-grab active:cursor-grabbing select-none"
             >
-              Folders from KB
+              {t('wf.kbf.title')}
             </h4>
 
             {kbMatches.length > 0 ? (
@@ -981,10 +984,10 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
                       transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
                       className="w-3 h-3 border-2 border-[#ffcc00]/30 border-t-[#ffcc00] rounded-full"
                     />
-                    Comparing…
+                    {t('wf.kbf.comparing')}
                   </span>
                 ) : (
-                  <span>No related folders yet</span>
+                  <span>{t('wf.kbf.empty')}</span>
                 )}
               </div>
             )}
@@ -1003,7 +1006,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
                 <div className="relative bg-[#ffcc00]/10 border border-[#ffcc00]/40 backdrop-blur-xl rounded-2xl p-3 shadow-[0_8px_24px_rgba(0,0,0,0.4)]">
                   <div className="absolute left-[-6px] top-4 w-3 h-3 rotate-45 bg-[#ffcc00]/10 border-l border-b border-[#ffcc00]/40" />
                   <p className="text-[11px] text-white/85 leading-snug mb-2">
-                    Ushbu analizlarni Word'ga saqlashni xohlaysizmi?
+                    {t('wf.kbf.savePrompt')}
                   </p>
                   <div className="flex gap-1.5">
                     <button
@@ -1011,12 +1014,12 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
                       disabled={savingKb}
                       className="flex-1 px-2 py-1 rounded-lg bg-[#ffcc00] hover:bg-[#ffcc00]/90 disabled:bg-white/10 disabled:text-white/30 text-black text-[11px] font-semibold flex items-center justify-center gap-1 transition-colors"
                     >
-                      <Save size={11} /> {savingKb ? 'Saving…' : "Ha, saqla"}
+                      <Save size={11} /> {savingKb ? t('wf.chat.saving') : t('wf.kbf.saveYes')}
                     </button>
                     <button
                       onClick={() => lastAnalysis && setKbPromptDismissed(lastAnalysis.id)}
                       className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-[11px] flex items-center justify-center"
-                      aria-label="Yopish"
+                      aria-label={t('wf.common.close')}
                     >
                       <X size={12} />
                     </button>
@@ -1055,9 +1058,9 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
             )}
           </div>
           <div className="text-center">
-            <h3 className="text-[12px] font-semibold text-[#ffe27a] tracking-wide">Archive folder</h3>
-            <p className="text-[10px] text-[#ffe27a]/60 mt-0.5" title="Local: <AGENT_DIR>/Archive folder/">
-              {archiveCount} saved {archiveCount === 1 ? 'file' : 'files'}
+            <h3 className="text-[12px] font-semibold text-[#ffe27a] tracking-wide">{t('wf.archive.title')}</h3>
+            <p className="text-[10px] text-[#ffe27a]/60 mt-0.5" title={t('wf.archive.localHint')}>
+              {t('wf.archive.files', { count: archiveCount })}
             </p>
           </div>
         </motion.div>
@@ -1115,19 +1118,17 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
                   <div className="w-8 h-8 rounded-xl bg-[#22ff88]/15 border border-[#22ff88]/30 flex items-center justify-center">
                     <Folder className="w-4 h-4 text-[#22ff88]" />
                   </div>
-                  <h2 className="text-base font-semibold text-white">Yangi papka yaratish</h2>
+                  <h2 className="text-base font-semibold text-white">{t('wf.create.title')}</h2>
                 </div>
                 <button
                   onClick={() => !creatingFolder && setShowCreateFolder(false)}
                   className="text-white/50 hover:text-white p-1 rounded"
-                  aria-label="Yopish"
+                  aria-label={t('wf.common.close')}
                 >
                   <X size={16} />
                 </button>
               </div>
-              <p className="text-xs text-white/55 mb-3 leading-relaxed">
-                Lokal Knowledge Base papkangizda bo'sh papka yaratiladi. Keyin "Add files" tugmasi orqali fayllar qo'shasiz.
-              </p>
+              <p className="text-xs text-white/55 mb-3 leading-relaxed">{t('wf.create.desc')}</p>
               <input
                 autoFocus
                 value={createFolderName}
@@ -1139,7 +1140,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
                   if (e.key === 'Enter') submitCreateFolder();
                   if (e.key === 'Escape' && !creatingFolder) setShowCreateFolder(false);
                 }}
-                placeholder="Papka nomi (masalan: HR bo'limi)"
+                placeholder={t('wf.create.placeholder')}
                 className="w-full bg-black/50 border border-white/10 focus:border-[#22ff88]/50 focus:ring-1 focus:ring-[#22ff88]/40 outline-none rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30"
               />
               {createFolderError && (
@@ -1151,7 +1152,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
                   disabled={creatingFolder}
                   className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 text-sm transition-colors"
                 >
-                  Bekor qilish
+                  {t('wf.common.cancel')}
                 </button>
                 <button
                   onClick={submitCreateFolder}
@@ -1160,11 +1161,11 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
                 >
                   {creatingFolder ? (
                     <>
-                      <RotateCcw size={13} className="animate-spin" /> Yaratilmoqda…
+                      <RotateCcw size={13} className="animate-spin" /> {t('wf.create.submitting')}
                     </>
                   ) : (
                     <>
-                      <Folder size={13} /> Yaratish
+                      <Folder size={13} /> {t('wf.create.submit')}
                     </>
                   )}
                 </button>
@@ -1200,22 +1201,20 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
                   <div className="w-8 h-8 rounded-xl bg-[#22ff88]/15 border border-[#22ff88]/30 flex items-center justify-center">
                     <FileIcon className="w-4 h-4 text-[#22ff88]" />
                   </div>
-                  <h2 className="text-base font-semibold text-white">Faylni papkaga qo'shish</h2>
+                  <h2 className="text-base font-semibold text-white">{t('wf.add.title')}</h2>
                 </div>
                 <button
                   onClick={() => !addFilesUploading && setShowAddFiles(false)}
                   className="text-white/50 hover:text-white p-1 rounded"
-                  aria-label="Yopish"
+                  aria-label={t('wf.common.close')}
                 >
                   <X size={16} />
                 </button>
               </div>
-              <p className="text-xs text-white/55 mb-3 leading-relaxed">
-                Mavjud papkalardan birini tanlang va PDF, DOC, DOCX, XLS, XLSX, TXT yoki MD faylni yuklang.
-              </p>
+              <p className="text-xs text-white/55 mb-3 leading-relaxed">{t('wf.add.desc')}</p>
 
               <label className="block text-[11px] uppercase tracking-wider text-white/40 font-medium mb-1">
-                Maqsad papka
+                {t('wf.add.targetLabel')}
               </label>
               <select
                 value={addFilesTarget}
@@ -1226,7 +1225,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
                 className="w-full bg-black/50 border border-white/10 focus:border-[#22ff88]/50 focus:ring-1 focus:ring-[#22ff88]/40 outline-none rounded-xl px-3 py-2.5 text-sm text-white mb-3"
               >
                 <option value="" disabled>
-                  {kbFolders.length === 0 ? 'Papkalar yo\'q — avval "Create folders" bilan yarating' : 'Papkani tanlang…'}
+                  {kbFolders.length === 0 ? t('wf.add.emptyHint') : t('wf.add.selectHint')}
                 </option>
                 {kbFolders.map((f) => (
                   <option key={f.name} value={f.name}>
@@ -1236,7 +1235,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
               </select>
 
               <label className="block text-[11px] uppercase tracking-wider text-white/40 font-medium mb-1">
-                Fayl
+                {t('wf.add.fileLabel')}
               </label>
               <input
                 ref={addFilesInputRef}
@@ -1256,7 +1255,7 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
                   disabled={addFilesUploading}
                   className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 text-sm transition-colors"
                 >
-                  Bekor qilish
+                  {t('wf.common.cancel')}
                 </button>
                 <button
                   onClick={submitAddFile}
@@ -1265,11 +1264,11 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
                 >
                   {addFilesUploading ? (
                     <>
-                      <RotateCcw size={13} className="animate-spin" /> Yuklanmoqda…
+                      <RotateCcw size={13} className="animate-spin" /> {t('wf.add.submitting')}
                     </>
                   ) : (
                     <>
-                      <FileIcon size={13} /> Yuklash
+                      <FileIcon size={13} /> {t('wf.add.submit')}
                     </>
                   )}
                 </button>

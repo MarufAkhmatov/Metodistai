@@ -2,8 +2,15 @@ import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Sparkles } from 'lucide-react';
 import { NodeEngine } from './NodeEngine';
+import { useLang } from '../i18n';
 
 export function WorkflowEditor() {
+  const { t } = useLang();
+  const TABS = [
+    { id: 'Editor', label: t('wf.tabs.editor') },
+    { id: 'Executions', label: t('wf.tabs.executions') },
+    { id: 'Tests', label: t('wf.tabs.tests') },
+  ];
   const [activeTab, setActiveTab] = useState('Editor');
   const [isRunning, setIsRunning] = useState(false);
 
@@ -44,17 +51,17 @@ export function WorkflowEditor() {
             </div>
             
             <div className="flex items-center gap-1 p-1 rounded-full bg-white/5 border border-white/10 backdrop-blur-md w-fit">
-              {['Editor', 'Executions', 'Tests'].map(tab => (
+              {TABS.map(tab => (
                 <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
                   className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-300 ${
-                    activeTab === tab 
-                      ? 'bg-[#22ff88]/20 text-[#22ff88] shadow-[0_0_10px_rgba(34,255,136,0.2)]' 
+                    activeTab === tab.id
+                      ? 'bg-[#22ff88]/20 text-[#22ff88] shadow-[0_0_10px_rgba(34,255,136,0.2)]'
                       : 'text-white/60 hover:text-white hover:bg-white/5'
                   }`}
                 >
-                  {tab}
+                  {tab.label}
                 </button>
               ))}
             </div>
@@ -69,7 +76,7 @@ export function WorkflowEditor() {
                   : 'bg-[#22ff88] text-black hover:bg-[#22ff88]/90 hover:shadow-[0_0_20px_rgba(34,255,136,0.4)]'
               }`}
             >
-              {isRunning ? 'Stop' : 'Run Workflow'}
+              {isRunning ? t('wf.stop') : t('wf.run')}
             </button>
           </div>
         </div>
