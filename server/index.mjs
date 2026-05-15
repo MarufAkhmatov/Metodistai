@@ -152,6 +152,107 @@ function groupKbMatches(chunks) {
   }));
 }
 
+// Oddiy stop-word ro'yxati (uz/ru/en) — keyword qidiruv aniqligi uchun.
+const STOPWORDS = new Set([
+  'the','and','for','with','from','into','this','that','are','was','were','have','has','had',
+  'will','can','may','should','could','would','about','what','which','who','whom','your','our',
+  'their','his','her','its','they','them','these','those','here','there','when','where','how',
+  'all','any','some','one','two','also','more','most','than','then','only','very',
+  'это','что','как','для','или','при','из','по','на','за','от','до','без','над','под','чтобы',
+  'если','то','же','ли','бы','быть','есть','был','была','были','будет','была','этой','этом','эта',
+  'тот','тех','той','той','один','два','три','эти','такой','такая','такие',
+  'uchun','bilan','yoki','bu','shu','ham','hech','kerak','boyicha','quyidagi','quyida','har','bir',
+  "bo'lib","bo'ladi","bo'lgan",'esa','agar','ammo','lekin','chunki','keyin','oldin','ostida',
+  'ustida','ichida','tashqari','yana','xuddi','aynan','aslida','balki','vaholanki',
+]);
+
+function tokenizeForSearch(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length >= 3 && !STOPWORDS.has(t));
+}
+
+// AGENT_DIR ichidagi fayl/papka nomlarini key word'lar bilan solishtirib, top-N papkalarni qaytaradi.
+// RAG ishlamasa yoki natija qaytarmasa — fallback. Departament = ildiz-darajadagi papka.
+function keywordMatchKB(query, agentDir, opts = {}) {
+  const folderLimit = opts.folderLimit ?? 6;
+  const filesPerFolder = opts.filesPerFolder ?? 6;
+  const maxDepth = opts.maxDepth ?? 4;
+  const tokens = [...new Set(tokenizeForSearch(query))];
+  if (tokens.length === 0) return [];
+
+  let topFolders = [];
+  try {
+    topFolders = readdirSync(agentDir, { withFileTypes: true })
+      .filter(
+        (e) =>
+          e.isDirectory() &&
+          !e.name.startsWith('.') &&
+          e.name !== ARCHIVE_FOLDER_NAME &&
+          e.name !== '.rag'
+      );
+  } catch {
+    return [];
+  }
+
+  const scoreName = (lowName) => {
+    let s = 0;
+    for (const t of tokens) {
+      if (lowName.includes(t)) s += 1;
+    }
+    return s;
+  };
+
+  const results = [];
+  for (const folder of topFolders) {
+    const folderPath = path.join(agentDir, folder.name);
+    const folderNameLow = folder.name.toLowerCase();
+    let folderScore = scoreName(folderNameLow) * 3; // papka nomidan match ko'proq vazn
+    const matchedFiles = [];
+
+    const walk = (dir, relPrefix, depth) => {
+      if (depth > maxDepth) return;
+      let entries = [];
+      try {
+        entries = readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        const full = path.join(dir, entry.name);
+        const rel = relPrefix ? `${relPrefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          // Ichki papka nomidan ham bal qo'shamiz
+          folderScore += scoreName(entry.name.toLowerCase());
+          walk(full, rel, depth + 1);
+        } else if (entry.isFile() && isDocFile(entry.name)) {
+          const score = scoreName(entry.name.toLowerCase());
+          if (score > 0) {
+            matchedFiles.push({ name: entry.name, relPath: rel, _score: score });
+          }
+        }
+      }
+    };
+    walk(folderPath, folder.name, 0);
+
+    const total = folderScore + matchedFiles.reduce((s, f) => s + f._score, 0);
+    if (total > 0) {
+      matchedFiles.sort((a, b) => b._score - a._score || a.name.localeCompare(b.name));
+      results.push({
+        folder: folder.name,
+        files: matchedFiles.slice(0, filesPerFolder).map(({ _score, ...rest }) => rest),
+        _score: total,
+      });
+    }
+  }
+
+  results.sort((a, b) => b._score - a._score);
+  return results.slice(0, folderLimit).map(({ _score, ...rest }) => rest);
+}
+
 function authConfigured() {
   return Boolean(AUTH_EMAIL && AUTH_PASSWORD_HASH && SESSION_SECRET);
 }
@@ -660,6 +761,15 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
         `faqat shu parchalarga asoslanib javob bering. Parcha yetarli bo'lmasa, ` +
         `foydalanuvchidan aniqlik so'rang. ---`;
       kbMatches = groupKbMatches(rag.chunks);
+    }
+  }
+
+  // Fallback: RAG ishlamasa yoki natija qaytarmasa — fayl/papka nomlari bo'yicha qidiramiz.
+  // Yuklangan fayl nomi ham kuchli signal.
+  if (kbMatches.length === 0) {
+    const fallbackQuery = [message, fileName].filter(Boolean).join(' ').slice(0, 2000);
+    if (fallbackQuery.trim()) {
+      kbMatches = keywordMatchKB(fallbackQuery, AGENT_DIR);
     }
   }
 
