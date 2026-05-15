@@ -11,6 +11,9 @@ import {
   FileIcon,
   Save,
   X,
+  Plus,
+  Minus,
+  RotateCcw,
 } from 'lucide-react';
 import { WorkflowChat, type KbFolder } from './WorkflowChat';
 
@@ -31,13 +34,17 @@ interface Connection {
 const CHAT_BASE_W = 468;
 const CHAT_BASE_H = 368;
 
+const ZOOM_MIN = 0.4;
+const ZOOM_MAX = 1.6;
+const ZOOM_STEP = 0.1;
+
 export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: boolean; generatedItems?: number[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Initial positions — kichraytirilgan tugunlar uchun moslangan.
-  const centerX = typeof window !== 'undefined' ? window.innerWidth / 2 : 600;
+  // Initial placeholder positions — useEffect orqali container o'lchamlariga qarab qayta sozlanadi.
+  const centerX = typeof window !== 'undefined' ? window.innerWidth / 2 : 700;
   const innerH = typeof window !== 'undefined' ? window.innerHeight : 800;
-  const chatY = Math.max(innerH - CHAT_BASE_H - 80, 360);
+  const chatY = Math.max(innerH - CHAT_BASE_H - 140, 320);
 
   const [positions, setPositions] = useState<Record<string, NodePosition>>({
     input: { x: centerX - 400, y: 170 },
@@ -60,6 +67,13 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
   ]);
 
   const [draggingConn, setDraggingConn] = useState<{ from: string; x: number; y: number; port: 'left' | 'right' | 'top' | 'bottom' } | null>(null);
+
+  // --- Zoom (canvas-level scale) ---
+  const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(1);
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
 
   // --- Chat-driven workflow state ---
   const [chatFile, setChatFile] = useState<File | null>(null);
@@ -112,15 +126,35 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
     refreshArchive();
   }, []);
 
-  // Archive node tagged to bottom-right after container measures.
+  // Container o'lchamini olib, hamma tugunlarni mos joyga sozlaymiz (faqat mount paytida).
+  // - input: chap devorga yaqin (~60% chap tomonga surilgan, lekin ~40px gap qoldiriladi)
+  // - kb:    o'ng devorga yaqin (~60% o'ng tomonga surilgan, lekin ~40px gap qoldiriladi)
+  // - chat:  pastki qism web ekrandan chiqib ketmasligi uchun container ichida
+  // - archive: o'ng-quyi burchak
   useEffect(() => {
     const rect = containerRef.current?.getBoundingClientRect();
-    if (rect && rect.width > 0 && rect.height > 0) {
-      setPositions((prev) => ({
-        ...prev,
-        archive: { x: Math.max(0, rect.width - 220), y: Math.max(0, rect.height - 220) },
-      }));
-    }
+    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+    const w = rect.width;
+    const h = rect.height;
+    const cx = w / 2;
+    const inputBaseX = cx - 400; // oldingi joy
+    const inputX = Math.max(40, inputBaseX * 0.4); // 60% chap tomonga, kamida 40px gap
+    const kbBaseX = cx + 200; // oldingi joy (KB w-[192px])
+    const kbRightSpace = Math.max(0, w - kbBaseX - 192);
+    const kbX = Math.min(w - 232, kbBaseX + kbRightSpace * 0.6); // 60% o'ng tomonga, kamida 40px gap
+    setPositions({
+      input: { x: inputX, y: 170 },
+      agent: { x: cx - 120, y: 130 },
+      kb: { x: kbX, y: 90 },
+      chat: {
+        x: Math.max(20, cx - CHAT_BASE_W / 2),
+        y: Math.max(180, h - CHAT_BASE_H - 24),
+      },
+      action_create: { x: cx + 160, y: 260 },
+      action_add: { x: cx + 320, y: 260 },
+      kb_folders: { x: cx + 200, y: 360 },
+      archive: { x: Math.max(40, w - 220), y: Math.max(40, h - 220) },
+    });
   }, []);
 
   // --- Node dragging (manual pointer events) ---
@@ -129,15 +163,19 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
   useEffect(() => {
     if (!dragId) return;
     const onMove = (e: MouseEvent) => {
+      const z = zoomRef.current || 1;
       setPositions((prev) => {
         const cur = prev[dragId];
         if (!cur) return prev;
-        let nx = cur.x + e.movementX;
-        let ny = cur.y + e.movementY;
+        let nx = cur.x + e.movementX / z;
+        let ny = cur.y + e.movementY / z;
         const rect = containerRef.current?.getBoundingClientRect();
         if (rect) {
-          nx = Math.min(Math.max(nx, 0), Math.max(rect.width - 60, 0));
-          ny = Math.min(Math.max(ny, 0), Math.max(rect.height - 40, 0));
+          // Logical (unscaled) bounds: container size / zoom
+          const maxX = Math.max(rect.width / z - 60, 0);
+          const maxY = Math.max(rect.height / z - 40, 0);
+          nx = Math.min(Math.max(nx, 0), maxX);
+          ny = Math.min(Math.max(ny, 0), maxY);
         }
         return { ...prev, [dragId]: { x: nx, y: ny } };
       });
@@ -237,9 +275,18 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
     return `M ${p1.x} ${p1.y} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
   };
 
+  // Sahna ichidagi (zoom hisobga olingan) koordinatalarga aylantirish.
+  const clientToLogical = (clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    const z = zoomRef.current || 1;
+    if (!rect) return { x: clientX, y: clientY };
+    return { x: (clientX - rect.left) / z, y: (clientY - rect.top) / z };
+  };
+
   const handleMouseMove = (e: React.MouseEvent) => {
     if (draggingConn) {
-      setDraggingConn((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : null));
+      const { x, y } = clientToLogical(e.clientX, e.clientY);
+      setDraggingConn((prev) => (prev ? { ...prev, x, y } : null));
     }
   };
   const handleMouseUp = () => {
@@ -248,7 +295,8 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
 
   const startConnection = (e: React.MouseEvent, fromNodeId: string, port: 'left' | 'right' | 'top' | 'bottom') => {
     e.stopPropagation();
-    setDraggingConn({ from: fromNodeId, x: e.clientX, y: e.clientY, port });
+    const { x, y } = clientToLogical(e.clientX, e.clientY);
+    setDraggingConn({ from: fromNodeId, x, y, port });
   };
   const completeConnection = (toNodeId: string, toPort: 'left' | 'top' | 'right' | 'bottom') => {
     if (draggingConn && draggingConn.from !== toNodeId) {
@@ -339,8 +387,60 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
     !savedIds.has(lastAnalysis.id) &&
     kbPromptDismissed !== lastAnalysis.id;
 
+  const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100));
+
   return (
-    <div ref={containerRef} className="w-full h-full relative" onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
+    <div
+      ref={containerRef}
+      className="w-full h-full relative overflow-hidden"
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+    >
+      {/* Zoom toolbar — scaled wrapper'dan tashqarida */}
+      <div
+        className="absolute bottom-4 left-4 z-50 flex items-center gap-1 bg-black/60 backdrop-blur-md border border-white/10 rounded-full p-1 shadow-[0_4px_18px_rgba(0,0,0,0.5)]"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={() => setZoom((z) => clampZoom(z - ZOOM_STEP))}
+          className="w-7 h-7 rounded-full hover:bg-white/10 text-white/70 hover:text-white flex items-center justify-center transition-colors"
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          <Minus size={14} />
+        </button>
+        <span className="px-2 text-[11px] tabular-nums text-white/70 font-medium select-none min-w-[36px] text-center">
+          {Math.round(zoom * 100)}%
+        </span>
+        <button
+          onClick={() => setZoom((z) => clampZoom(z + ZOOM_STEP))}
+          className="w-7 h-7 rounded-full hover:bg-white/10 text-white/70 hover:text-white flex items-center justify-center transition-colors"
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
+          <Plus size={14} />
+        </button>
+        <div className="w-px h-4 bg-white/10 mx-1" />
+        <button
+          onClick={() => setZoom(1)}
+          className="w-7 h-7 rounded-full hover:bg-white/10 text-white/60 hover:text-[#22ff88] flex items-center justify-center transition-colors"
+          aria-label="Reset zoom"
+          title="Reset zoom"
+        >
+          <RotateCcw size={12} />
+        </button>
+      </div>
+
+      {/* Scaled scene wrapper */}
+      <div
+        className="absolute top-0 left-0 origin-top-left"
+        style={{
+          width: `${100 / zoom}%`,
+          height: `${100 / zoom}%`,
+          transform: `scale(${zoom})`,
+          transition: dragId ? 'none' : 'transform 200ms ease-out, width 200ms ease-out, height 200ms ease-out',
+        }}
+      >
       {/* SVG Connections */}
       <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
         <defs>
@@ -832,6 +932,8 @@ export function NodeEngine({ isRunning, generatedItems = [] }: { isRunning: bool
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
+      {/* /scaled scene wrapper */}
     </div>
   );
 }
