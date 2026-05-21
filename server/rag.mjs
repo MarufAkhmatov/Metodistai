@@ -34,7 +34,13 @@ export function getRagStatus() {
 
 function runRag(args, timeoutMs, stdinText) {
   return new Promise((resolve, reject) => {
-    const child = spawn(PYTHON_BIN, [RAG_SCRIPT, ...args], { windowsHide: true });
+    // Windows'da bola-Python stdin/stdout'ni cp1252'da o'qiydi — kirill so'rovi
+    // buzilib, fastembed tokenizer "TextEncodeInput" xatosi bilan yiqiladi.
+    // UTF-8'ni majburlaymiz, aks holda RAG hech qachon parcha qaytarmaydi.
+    const child = spawn(PYTHON_BIN, [RAG_SCRIPT, ...args], {
+      windowsHide: true,
+      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+    });
 
     let stdout = '';
     let stderr = '';

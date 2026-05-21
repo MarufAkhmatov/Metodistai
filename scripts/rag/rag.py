@@ -44,6 +44,8 @@ CHUNK_OVERLAP = 200
 TOP_K = 8
 
 _model = None
+# cmd_index ishga tushganda o'rnatiladi — extract_pdf OCR cache'ini topishi uchun.
+_AGENT_DIR = None
 
 
 def log(*args):
@@ -72,17 +74,53 @@ def load_model():
 
 # --- Matn ajratish ---
 
+def _ocr_cache_text(path):
+    """Skan PDF uchun metodist CLI ning OCR cache'idan matn o'qiydi.
+
+    metodist `extract.py` har bir PDF ni `.cache/text/<rel>.json` ga yozadi
+    (shakl: [{"page": N, "text": "..."}]). pypdf bo'sh qaytarsa (matn qatlamisiz
+    skan), shu OCR natijasini qayta ishlatamiz — qaytadan OCR qilmaymiz.
+    """
+    if _AGENT_DIR is None:
+        return ""
+    try:
+        rel = Path(path).relative_to(_AGENT_DIR)
+    except Exception:
+        return ""
+    cache = (Path(_AGENT_DIR) / ".cache" / "text" / rel).with_suffix(".json")
+    if not os.path.exists(fs_path(cache)):
+        return ""
+    try:
+        with open(fs_path(cache), encoding="utf-8") as f:
+            pages = json.load(f)
+    except Exception:
+        return ""
+    if not isinstance(pages, list):
+        return ""
+    return "\n".join(p.get("text", "") for p in pages if isinstance(p, dict))
+
+
 def extract_pdf(path):
     from pypdf import PdfReader
 
-    reader = PdfReader(fs_path(path))
     parts = []
-    for page in reader.pages:
-        try:
-            parts.append(page.extract_text() or "")
-        except Exception:
-            pass
-    return "\n".join(parts)
+    try:
+        reader = PdfReader(fs_path(path))
+        for page in reader.pages:
+            try:
+                parts.append(page.extract_text() or "")
+            except Exception:
+                pass
+    except Exception:
+        pass
+    text = "\n".join(parts)
+    # Matn qatlamisiz skan PDF → pypdf deyarli bo'sh qaytaradi. metodist OCR
+    # cache'idan o'qiymiz (mavjud bo'lsa va u boyroq bo'lsa).
+    if len(text.strip()) < 100:
+        ocr = _ocr_cache_text(path)
+        if len(ocr.strip()) > len(text.strip()):
+            return ocr
+    return text
 
 
 def extract_docx(path):
@@ -240,7 +278,9 @@ def write_index_md(agent_dir, files, chunks, skipped):
 def cmd_index(agent_dir):
     import numpy as np
 
+    global _AGENT_DIR
     agent_dir = Path(agent_dir)
+    _AGENT_DIR = agent_dir
     sp = store_paths(agent_dir)
     sp["dir"].mkdir(parents=True, exist_ok=True)
 
