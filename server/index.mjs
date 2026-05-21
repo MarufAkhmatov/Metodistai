@@ -25,13 +25,28 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
 const AGENT_DIR = process.env.METODIST_AGENT_DIR || '';
-// Claude CLI shu BO'SH papkada ishlaydi — normativ hujjatlarga (AGENT_DIR)
-// to'g'ridan-to'g'ri kira olmasligi uchun. Unga faqat maskalangan matn beriladi.
+// AGENT_DIR (normativ hujjatlar korpusi) Claude CLI ning ish papkasi bo'ladi —
+// shunda Claude hujjatlarni TO'LIQ o'qib, band-darajasida aniq javob bera oladi.
 const AGENT_WORKDIR = path.join(__dirname, '..', '.agent-workdir');
-// Claude faqat berilgan matnga javob bersin — fayl/tarmoq vositalari o'chirilgan.
-const DISALLOWED_TOOLS = 'Bash,Read,Edit,Write,Glob,Grep,WebFetch,WebSearch,NotebookEdit';
+// Faqat O'QISH ruxsat: Read/Grep/Glob ochiq (hujjatlarni o'qish uchun);
+// yozish/bajarish/tarmoq (Edit/Write/Bash/Web) bloklangan.
+const DISALLOWED_TOOLS = 'Edit,Write,Bash,WebFetch,WebSearch,NotebookEdit';
 const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+// Metodolog roli — har bir so'rovga stdin orqali qo'shiladi (CLI argumenti emas,
+// shuning uchun Windows shell qochirish muammosi yo'q). 18KB dasturchi CLAUDE.md
+// o'rniga shu aniq yo'riqnoma ishlatiladi.
+const SYSTEM_INSTRUCTIONS = `Sen "Ипак Йўли" банкининг AI методолог-ёрдамчисисан. Банкнинг ички норматив ҳужжатлари (рус / ўзбек-лотин / ўзбек-кирилл) бўйича ходимларга аниқ, манбага асосланган жавоб берасан.
+
+ИШ ТАРТИБИ ВА ҚОИДАЛАР:
+1. ТИЛ: савол қайси тилда ва ёзувда берилса — жавобни ҲАМ айнан шу тил/ёзувда бер (рус / ўзбек-лотин / ўзбек-кирилл).
+2. ҲУЖЖАТЛАРНИ ЎҚИ: сенга «Билим базаси» парчалари берилади — бу фақат БОШЛАНҒИЧ кўрсатма. Аниқ, банд-даражасидаги жавоб учун Read/Grep/Glob воситалари билан ТЎЛИҚ ҳужжат матнини оч.
+3. СКАНЕР ҲУЖЖАТЛАР: кўп PDF сканер қилинган (матн қатламисиз). Уларнинг тўлиқ матни OCR кеш файлида: «.cache/text/<худди шу нисбий йўл, лекин .pdf ўрнига .json>» (шакл: [{"page":N,"text":"..."}]). Аниқ матн учун ШУ JSON ни Read билан ўқи, PDF ни эмас.
+4. МАНБА: фақат ҳужжатлардаги ҳақиқий матнга таян. Ҳеч нарсани ўйлаб топма. Топилмаса — «ҳужжатларда топилмади» деб айт ва аниқлик сўра.
+5. ИҚТИБОС: ҳар бир даъвони манба билан кўрсат — (файл номи, бет/саҳифа N, банд/§). Ташқи (лex.uz) акт бўлса — акт рақами + сана + URL.
+6. CLI БУЙРУҚЛАРИНИ ИШГА ТУШИРМА (metodist, npm ва ҳ.к.) — фақат ҳужжатларни ўқиб жавоб бер.
+7. ЖАВОБ СИФАТИ: аввал қисқа аниқ жавоб; кейин зарур бўлса банд-даражасидаги жадвал ёки рўйхат; охирида манбалар рўйхати. Тахмин ва сув қуйишдан сақлан.`;
 
 try {
   mkdirSync(AGENT_WORKDIR, { recursive: true });
@@ -754,7 +769,9 @@ function runClaude(prompt, sessionId) {
     }
 
     const child = spawn(CLAUDE_BIN, args, {
-      cwd: AGENT_WORKDIR,
+      // cwd = korpus papkasi: Claude Read/Grep/Glob bilan hujjatlarni o'qiy oladi.
+      // cwd alohida uzatiladi — bo'shliqli yo'l (AI Metodist Agent) muammo bermaydi.
+      cwd: AGENT_DIR || AGENT_WORKDIR,
       shell: process.platform === 'win32',
       windowsHide: true,
     });
@@ -859,14 +876,18 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
     const rag = await queryKnowledgeBase(AGENT_DIR, ragQuery);
     if (rag && Array.isArray(rag.chunks) && rag.chunks.length > 0) {
       const excerpts = rag.chunks
-        .map((c, i) => `[${i + 1}] (${c.rel_path})\n${c.text}`)
+        .map((c, i) => {
+          const jsonPath = `.cache/text/${c.rel_path.replace(/\.[^./]+$/, '.json')}`;
+          return `[${i + 1}] hujjat: ${c.rel_path}\n   to'liq matn (OCR): ${jsonPath}\n   parcha: ${c.text}`;
+        })
         .join('\n\n');
       ragContext =
-        `--- Bilim bazasidan tegishli parchalar (avtomatik qidiruv natijasi) ---\n` +
+        `--- Bilim bazasidan tegishli boshlang'ich parchalar (avtomatik qidiruv) ---\n` +
         `${excerpts}\n` +
-        `--- Parchalar tugadi. Maxfiylik sababli asl fayllar sizga berilmaydi — ` +
-        `faqat shu parchalarga asoslanib javob bering. Parcha yetarli bo'lmasa, ` +
-        `foydalanuvchidan aniqlik so'rang. ---`;
+        `--- Bu faqat YO'NALTIRUVCHI parchalar. Aniq, band-darajasidagi javob uchun ` +
+        `yuqoridagi hujjatlarning TO'LIQ matnini o'qing: skaner PDF bo'lsa ko'rsatilgan ` +
+        `".cache/text/...json" faylini Read bilan oching; kerak bo'lsa Grep/Glob bilan ` +
+        `boshqa tegishli hujjatlarni ham toping. ---`;
       kbMatches = groupKbMatches(rag.chunks);
     }
   }
@@ -880,20 +901,9 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
     }
   }
 
-  // CLAUDE.md yo'riqnomasini o'zimiz o'qib beramiz (Claude endi AGENT_DIR ga kira olmaydi).
-  let claudeMd = '';
-  const claudeMdPath = path.join(AGENT_DIR, 'CLAUDE.md');
-  if (existsSync(claudeMdPath)) {
-    try {
-      claudeMd = readFileSync(claudeMdPath, 'utf8');
-    } catch {}
-  }
-
-  const contentParts = [];
-  if (claudeMd) {
-    contentParts.push(`--- Yo'riqnoma (CLAUDE.md) ---\n${claudeMd}\n--- Yo'riqnoma tugadi ---`);
-  }
-  if (message) contentParts.push(message);
+  // Metodolog yo'riqnomasi har doim eng boshda (stdin orqali).
+  const contentParts = [SYSTEM_INSTRUCTIONS];
+  if (message) contentParts.push(`--- SAVOL ---\n${message}`);
   if (ragContext) contentParts.push(ragContext);
   if (fileText) {
     contentParts.push(`--- Biriktirilgan fayl: ${fileName} ---\n${fileText}\n--- Fayl tugadi ---`);
