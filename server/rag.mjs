@@ -157,11 +157,13 @@ export async function indexKnowledgeBase(agentDir) {
   }
 }
 
-export async function queryKnowledgeBase(agentDir, query) {
+export async function queryKnowledgeBase(agentDir, query, topK) {
   if (!existsSync(RAG_SCRIPT) || status.state === 'disabled') return null;
   if (typeof query !== 'string' || !query.trim()) return null;
   try {
-    return await runRag(['query', agentDir], QUERY_TIMEOUT_MS, query);
+    const args = ['query', agentDir];
+    if (Number.isFinite(topK) && topK > 0) args.push(String(Math.floor(topK)));
+    return await runRag(args, QUERY_TIMEOUT_MS, query);
   } catch (e) {
     console.error('[rag] so\'rov xatosi:', e instanceof Error ? e.message : String(e));
     return null;

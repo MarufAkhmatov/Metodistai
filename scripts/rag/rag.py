@@ -377,7 +377,7 @@ def cmd_index(agent_dir):
     )
 
 
-def cmd_query(agent_dir):
+def cmd_query(agent_dir, top_k=TOP_K):
     import numpy as np
 
     query = sys.stdin.read().strip()
@@ -400,7 +400,7 @@ def cmd_query(agent_dir):
     emb_norm = emb / (np.linalg.norm(emb, axis=1, keepdims=True) + 1e-9)
     qn = qvec / (np.linalg.norm(qvec) + 1e-9)
     scores = emb_norm @ qn
-    top_idx = np.argsort(-scores)[:TOP_K]
+    top_idx = np.argsort(-scores)[: max(1, int(top_k))]
 
     results = []
     for i in top_idx:
@@ -451,7 +451,13 @@ def main():
         if cmd == "index":
             cmd_index(args[1])
         elif cmd == "query":
-            cmd_query(args[1])
+            top_k = TOP_K
+            if len(args) >= 3:
+                try:
+                    top_k = max(1, min(200, int(args[2])))
+                except ValueError:
+                    pass
+            cmd_query(args[1], top_k)
         elif cmd == "status":
             cmd_status(args[1])
         elif cmd == "models":

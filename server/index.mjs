@@ -48,6 +48,45 @@ const SYSTEM_INSTRUCTIONS = `Sen "Ипак Йўли" банкининг AI ме�
 6. CLI БУЙРУҚЛАРИНИ ИШГА ТУШИРМА (metodist, npm ва ҳ.к.) — фақат ҳужжатларни ўқиб жавоб бер.
 7. ЖАВОБ СИФАТИ: аввал қисқа аниқ жавоб; кейин зарур бўлса банд-даражасидаги жадвал ёки рўйхат; охирида манбалар рўйхати. Тахмин ва сув қуйишдан сақлан.`;
 
+// Кенг қамровли (аудит/таққослаш/«барча ҳужжатлар») саволларда қўшиладиган қўшимча
+// йўриқнома. Бунда агент қисқа эмас, ТЎЛИҚ ва тизимли таҳлил қилиши шарт.
+const DEEP_AUDIT_INSTRUCTIONS = `--- ЧУҚУР АУДИТ РЕЖИМИ (МАЖБУРИЙ) ---
+Бу савол КЕНГ ҚАМРОВЛИ, тизимли таҳлил талаб қилади. Қисқа ёки юзаки жавоб БЕРМА.
+Қуйидаги тартибда ишла:
+
+1. РЕЖА ТУЗ: аввал \`Glob\` (масалан "**/*.pdf", "**/*.docx") ва \`Grep\` билан КОРПУСДАГИ тегишли БАРЧА папка ва ҳужжатларни санаб чиқ. Берилган бошланғич парчалар — фақат йўналиш; улар билан ЧЕКЛАНМА.
+2. ҲАР БИР тегишли бўлим/папкани кўриб чиқ — биттагина эмас. Сканер PDF учун матн ".cache/text/<нисбий йўл>.json" да: ШУ JSON ни \`Read\` билан оч (PDF ни эмас).
+3. БАНД-БАНД таққосла: ташқи акт/талабнинг ҲАР БИР банди ↔ ички ҳужжатдаги ҳолат. Ҳар бир банд учун: мавжуд / йўқ / тўлиқ эмас — аниқ белгила.
+4. ҲЕЧ НИМАНИ ўйлаб топма ва умумлаштириб юзаки ёзма. Фақат ҳужжатдаги ҳақиқий матнга таян; топилмаса "ҳужжатларда топилмади" деб ёз.
+5. НАТИЖА ТУЗИЛМАСИ (Markdown):
+   • **Резюме**: нечта расхождение/камчилик, нечта бўлим қамраб олинди.
+   • **Бўлимлар кесимида жадваллар**: устунлар — № | Папка | Ҳужжат | Камчилик/йўқ банд | Ташқи акт банди.
+   • **Бўлимлар бўйича тақсимот** жадвали: Бўлим | Ҳужжатлар сони | Расхождения | Даража (критик/муҳим/ўрта).
+   • **ТОП устувор вазифалар** (5–10 та).
+   • **Манбалар**: ҳар бир даъво учун (файл номи, бет/§, банд рақами).
+6. ҚАМРОВ: барча тегишли бўлимларни ёп. 1–2 ҳужжат билан тугатма — бу етарли эмас.`;
+
+// Савол кенг қамровли (аудит/таққослаш) бўлса — ҳа.
+const DEEP_QUESTION_PATTERNS = [
+  // uz (lotin)
+  'audit', 'auditi', 'taqqosla', 'solishtir', "to'liq tahlil", 'toliq tahlil',
+  'barcha hujjat', 'hamma hujjat', 'barcha papka', "har bir bo'lim", 'har bir bolim',
+  'nomuvofiq', 'muvofiqlik', "ro'yxatini", 'royxatini', 'qaysi hujjatlar', 'qaysi papkalar',
+  'keng qamrov', 'chuqur tahlil',
+  // ru
+  'аудит', 'сравн', 'сопостав', 'все документ', 'всех документ', 'все внд', 'каждое подразделени',
+  'каждый документ', 'расхожд', 'несоответств', 'перечень', 'список всех', 'полный анализ',
+  'полная проверк', 'по всем', 'проверь все', 'комплаенс-аудит', 'комплаенс аудит', 'выяви все',
+  // en
+  'compare', 'comparison', 'all documents', 'across all', 'discrepanc', 'non-compli',
+  'full analysis', 'comprehensive', 'which documents', 'list all', 'each department',
+];
+
+function isDeepQuestion(text) {
+  const low = String(text || '').toLowerCase();
+  return DEEP_QUESTION_PATTERNS.some((p) => low.includes(p));
+}
+
 try {
   mkdirSync(AGENT_WORKDIR, { recursive: true });
 } catch {}
@@ -753,19 +792,20 @@ app.post('/api/save-archive', requireAuth, async (req, res) => {
   }
 });
 
-function runClaude(prompt, sessionId) {
+function runClaude(prompt, sessionId, opts = {}) {
+  const maxTurns = Number.isFinite(opts.maxTurns) ? opts.maxTurns : 48;
+  const timeoutMs = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : REQUEST_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
-    // --add-dir BERILMAYDI va cwd bo'sh papka — Claude normativ hujjatlarni
-    // o'qiy olmaydi; --disallowedTools fayl/tarmoq vositalarini bloklaydi.
+    // cwd = korpus; faqat o'qish vositalari ochiq (DISALLOWED_TOOLS yozish/tarmoqni bloklaydi).
+    // --max-turns: oddiy savol uchun kichik, chuqur audit uchun katta (kechikishni boshqaradi).
     const args = [
       '-p',
       '--output-format',
       'json',
       '--disallowedTools',
       DISALLOWED_TOOLS,
-      // Agentik tsiklni cheklash: cheksiz fayl o'qib ketmasin (kechikishni chegaralaydi).
       '--max-turns',
-      '48',
+      String(maxTurns),
     ];
     if (sessionId) {
       args.unshift('--resume', sessionId);
@@ -793,8 +833,8 @@ function runClaude(prompt, sessionId) {
       try {
         child.kill();
       } catch {}
-      reject(new Error(`Claude CLI timed out after ${REQUEST_TIMEOUT_MS / 1000}s`));
-    }, REQUEST_TIMEOUT_MS);
+      reject(new Error(`Claude CLI timed out after ${timeoutMs / 1000}s`));
+    }, timeoutMs);
 
     child.stdout.on('data', (d) => {
       stdout += d.toString();
@@ -878,13 +918,19 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
     return;
   }
 
+  // Keng qamrovli (audit/taqqoslash) savol bo'lsa — chuqur rejim:
+  // ko'proq boshlang'ich parcha, kuchaytirilgan yo'riqnoma, ko'proq qadam va vaqt.
+  const deepMode = isDeepQuestion(message) || isDeepQuestion(fileName);
+
   let ragContext = '';
   let kbMatches = [];
   // RAG so'rovi: xabar + biriktirilgan fayl matni — yuklangan faylni KB bilan
   // taqqoslash uchun ham tegishli parchalar topilsin.
   const ragQuery = [message, fileText].filter(Boolean).join('\n').slice(0, 4000);
   if (ragQuery.trim()) {
-    const rag = await queryKnowledgeBase(AGENT_DIR, ragQuery);
+    // Chuqur rejimda korpus bo'ylab keng qamrov uchun ancha ko'p parcha so'raymiz.
+    const topK = deepMode ? 40 : 8;
+    const rag = await queryKnowledgeBase(AGENT_DIR, ragQuery, topK);
     if (rag && Array.isArray(rag.chunks) && rag.chunks.length > 0) {
       const excerpts = rag.chunks
         .map((c, i) => {
@@ -914,6 +960,7 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
 
   // Metodolog yo'riqnomasi har doim eng boshda (stdin orqali).
   const contentParts = [SYSTEM_INSTRUCTIONS];
+  if (deepMode) contentParts.push(DEEP_AUDIT_INSTRUCTIONS);
   if (message) contentParts.push(`--- SAVOL ---\n${message}`);
   if (ragContext) contentParts.push(ragContext);
   if (fileText) {
@@ -933,7 +980,12 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
   const prompt = maskedContent + privacyNote;
 
   try {
-    const result = await runClaude(prompt, currentSessionId);
+    // Chuqur rejimda agentga ko'proq qadam (200) va ko'proq vaqt (20 daqiqa) beriladi —
+    // o'nlab hujjatni o'qib, tizimli audit qila olishi uchun.
+    const runOpts = deepMode
+      ? { maxTurns: 200, timeoutMs: 20 * 60 * 1000 }
+      : { maxTurns: 48, timeoutMs: REQUEST_TIMEOUT_MS };
+    const result = await runClaude(prompt, currentSessionId, runOpts);
     if (result && typeof result.session_id === 'string') {
       currentSessionId = result.session_id;
     }
