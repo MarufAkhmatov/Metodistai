@@ -41,7 +41,7 @@ const SYSTEM_INSTRUCTIONS = `Sen "Ипак Йўли" банкининг AI ме�
 
 ИШ ТАРТИБИ ВА ҚОИДАЛАР:
 1. ТИЛ: савол қайси тилда ва ёзувда берилса — жавобни ҲАМ айнан шу тил/ёзувда бер (рус / ўзбек-лотин / ўзбек-кирилл).
-2. ҲУЖЖАТЛАРНИ ЎҚИ: сенга «Билим базаси» парчалари берилади — бу фақат БОШЛАНҒИЧ кўрсатма. Аниқ, банд-даражасидаги жавоб учун Read/Grep/Glob воситалари билан ТЎЛИҚ ҳужжат матнини оч.
+2. ҲУЖЖАТЛАРНИ ЎҚИ (САМАРАЛИ): сенга «Билим базаси» парчалари берилади. Агар парчалар жавоб учун ЕТАРЛИ бўлса — дарров жавоб бер (файл очма). Аниқ банд рақами, иқтибос ёки чуқурроқ таҳлил керак бўлсагина — энг тегишли 1–3 та ҳужжатнинг ТЎЛИҚ матнини Read/Grep билан оч. Бутун корпусни ўқиб чиқма — фақат саволга тегишлисини.
 3. СКАНЕР ҲУЖЖАТЛАР: кўп PDF сканер қилинган (матн қатламисиз). Уларнинг тўлиқ матни OCR кеш файлида: «.cache/text/<худди шу нисбий йўл, лекин .pdf ўрнига .json>» (шакл: [{"page":N,"text":"..."}]). Аниқ матн учун ШУ JSON ни Read билан ўқи, PDF ни эмас.
 4. МАНБА: фақат ҳужжатлардаги ҳақиқий матнга таян. Ҳеч нарсани ўйлаб топма. Топилмаса — «ҳужжатларда топилмади» деб айт ва аниқлик сўра.
 5. ИҚТИБОС: ҳар бир даъвони манба билан кўрсат — (файл номи, бет/саҳифа N, банд/§). Ташқи (лex.uz) акт бўлса — акт рақами + сана + URL.
@@ -763,6 +763,9 @@ function runClaude(prompt, sessionId) {
       'json',
       '--disallowedTools',
       DISALLOWED_TOOLS,
+      // Agentik tsiklni cheklash: cheksiz fayl o'qib ketmasin (kechikishni chegaralaydi).
+      '--max-turns',
+      '30',
     ];
     if (sessionId) {
       args.unshift('--resume', sessionId);
@@ -948,7 +951,7 @@ app.use((err, _req, res, _next) => {
 });
 
 // Faqat localhost (127.0.0.1) da tinglaydi — tarmoqdagi boshqa qurilmalar kira olmaydi.
-app.listen(PORT, '127.0.0.1', () => {
+const server = app.listen(PORT, '127.0.0.1', () => {
   console.log(`[metodistai] backend listening on http://127.0.0.1:${PORT} (faqat localhost)`);
   console.log(`[metodistai] using CLI: ${CLAUDE_BIN}`);
   const dirError = validateAgentDir();
@@ -967,3 +970,11 @@ app.listen(PORT, '127.0.0.1', () => {
     startKnowledgeWatcher(AGENT_DIR);
   }
 });
+
+// Chat-da Claude hujjatlarni o'qib javob berishi bir necha daqiqa olishi mumkin.
+// Node'ning standart 5 daqiqalik requestTimeout'i uzun so'rovni uzib qo'yadi
+// (brauzer "javob yo'q" ko'radi) — uni o'chiramiz. runClaude o'z timeouti (10 daq) bilan cheklaydi.
+server.requestTimeout = 0;
+server.headersTimeout = 0;
+server.timeout = 0;
+server.keepAliveTimeout = 0;
