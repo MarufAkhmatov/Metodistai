@@ -765,7 +765,7 @@ function runClaude(prompt, sessionId) {
       DISALLOWED_TOOLS,
       // Agentik tsiklni cheklash: cheksiz fayl o'qib ketmasin (kechikishni chegaralaydi).
       '--max-turns',
-      '30',
+      '48',
     ];
     if (sessionId) {
       args.unshift('--resume', sessionId);
@@ -822,16 +822,24 @@ function runClaude(prompt, sessionId) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (code !== 0) {
-        reject(new Error(`Claude CLI exited with code ${code}. stderr: ${stderr.trim()}`));
+      // claude -p --output-format json natижани (max-turns/xato бўлса ҳам) stdout'га
+      // ёзади. Шунинг учун exit кодга ҚАРАМАЙ аввал stdout'ни ўқиймиз — акс ҳолда
+      // "exited with code 1" билан тайёр (ёки қисман) жавоб йўқолади.
+      const out = stdout.trim();
+      if (out) {
+        try {
+          resolve(JSON.parse(out));
+        } catch {
+          resolve({ result: out, session_id: sessionId ?? null });
+        }
         return;
       }
-      try {
-        const parsed = JSON.parse(stdout);
-        resolve(parsed);
-      } catch {
-        resolve({ result: stdout.trim(), session_id: sessionId ?? null });
-      }
+      reject(
+        new Error(
+          `Claude CLI exited with code ${code}.` +
+            (stderr.trim() ? ` stderr: ${stderr.trim()}` : ' (chiqishsiz tugadi)')
+        )
+      );
     });
   });
 }
@@ -929,9 +937,17 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
     if (result && typeof result.session_id === 'string') {
       currentSessionId = result.session_id;
     }
-    const rawReply =
-      (result && typeof result.result === 'string' && result.result) ||
-      "Bo'sh javob qaytdi.";
+    let rawReply = (result && typeof result.result === 'string' && result.result.trim()) || '';
+    // Claude qadamlar chegarasiga (--max-turns) urilса, натижа қисман ёки бўш бўлиши мумкин.
+    if (!rawReply && result && result.subtype === 'error_max_turns') {
+      rawReply =
+        "Савол жуда кенг — белгиланган таҳлил қадамлари тугади. Илтимос, саволни торроқ беринг " +
+        "(масалан, аниқ битта ҳужжат ёки битта мавзу бўйича).";
+    } else if (!rawReply && result && result.is_error) {
+      rawReply = 'Жавоб шакллантиришда хатолик юз берди. Илтимос, саволни қайта беринг.';
+    } else if (!rawReply) {
+      rawReply = "Bo'sh javob qaytdi.";
+    }
     // Claude javobidagi belgilarni asl qiymatlarga tiklab, foydalanuvchiga ko'rsatamiz.
     const reply = masker.unmask(rawReply);
     res.json({ reply, sessionId: currentSessionId, kbMatches });
