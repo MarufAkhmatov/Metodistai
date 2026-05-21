@@ -18,17 +18,23 @@ import {
   startKnowledgeWatcher,
   getRagStatus,
 } from './rag.mjs';
-import { createMasker, loadMaskTerms, resetMaskMap } from './mask.mjs';
+import { createMasker, loadMaskTerms, resetMaskMap, saveMaskMap, loadMaskMap } from './mask.mjs';
 import { markdownToDocxBuffer } from './markdown-to-docx.mjs';
+import { ensureMaskedCorpus } from './masked-corpus.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3001;
 const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
 const AGENT_DIR = process.env.METODIST_AGENT_DIR || '';
-// AGENT_DIR (normativ hujjatlar korpusi) Claude CLI ning ish papkasi bo'ladi —
-// shunda Claude hujjatlarni TO'LIQ o'qib, band-darajasida aniq javob bera oladi.
 const AGENT_WORKDIR = path.join(__dirname, '..', '.agent-workdir');
-// Faqat O'QISH ruxsat: Read/Grep/Glob ochiq (hujjatlarni o'qish uchun);
+// MAXFIYLIK: Claude CLI ning ish papkasi (cwd) AGENT_DIR EMAS, balki
+// MASKALANGAN nusxa papkasi. Shunda agent hujjatlarni TO'LIQ o'qiy oladi,
+// lekin bulutga faqat maskalangan matn chiqadi (xom bank siri/PII chiqmaydi).
+// Bu papka .agent-workdir ichida — gitignore'da, AGENT_DIR'dan butunlay alohida.
+const MASKED_CORPUS_DIR = path.join(AGENT_WORKDIR, 'masked-corpus');
+const MASKED_MARKER = path.join(AGENT_WORKDIR, 'masked-corpus.marker.json');
+const MASK_MAP_FILE = path.join(AGENT_WORKDIR, 'mask-map.json');
+// Faqat O'QISH ruxsat: Read/Grep/Glob ochiq (maskalangan nusxani o'qish uchun);
 // yozish/bajarish/tarmoq (Edit/Write/Bash/Web) bloklangan.
 const DISALLOWED_TOOLS = 'Edit,Write,Bash,WebFetch,WebSearch,NotebookEdit';
 const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
@@ -41,8 +47,9 @@ const SYSTEM_INSTRUCTIONS = `Sen "Ипак Йўли" банкининг AI ме�
 
 ИШ ТАРТИБИ ВА ҚОИДАЛАР:
 1. ТИЛ: савол қайси тилда ва ёзувда берилса — жавобни ҲАМ айнан шу тил/ёзувда бер (рус / ўзбек-лотин / ўзбек-кирилл).
-2. ҲУЖЖАТЛАРНИ ЎҚИ (САМАРАЛИ): сенга «Билим базаси» парчалари берилади. Агар парчалар жавоб учун ЕТАРЛИ бўлса — дарров жавоб бер (файл очма). Аниқ банд рақами, иқтибос ёки чуқурроқ таҳлил керак бўлсагина — энг тегишли 1–3 та ҳужжатнинг ТЎЛИҚ матнини Read/Grep билан оч. Бутун корпусни ўқиб чиқма — фақат саволга тегишлисини.
-3. СКАНЕР ҲУЖЖАТЛАР: кўп PDF сканер қилинган (матн қатламисиз). Уларнинг тўлиқ матни OCR кеш файлида: «.cache/text/<худди шу нисбий йўл, лекин .pdf ўрнига .json>» (шакл: [{"page":N,"text":"..."}]). Аниқ матн учун ШУ JSON ни Read билан ўқи, PDF ни эмас.
+2. ҲУЖЖАТЛАРНИ ЎҚИ: бутун корпус сенинг ЖОРИЙ ИШ ПАПКАНГ (cwd) да — ҳар бир ҳужжат алоҳида «.txt» файл, папка тузилиши банкдаги бўлимлар билан бир хил. Glob ("**/*.txt"), Grep ва Read билан керакли ҳужжатларни оч. Берилган «Билим базаси» парчалари — фақат йўналтирувчи; етарли бўлса дарров жавоб бер, чуқурроқ керак бўлса тегишли .txt файлларни оч.
+3. БУ .txt ФАЙЛЛАР тўлиқ матнни (сканер PDF лар учун OCR матнини ҳам) ўз ичига олади — бошқа жойдан қидирма, фақат шу cwd ичидаги файлларни ўқи.
+   МАХФИЙЛИК: матнда [MAXFIY_xxx], [RAQAM_xxx], [TELEFON_xxx], [EMAIL_xxx] белгилари учрайди — булар маxфий қийматлар ўрнида. Жавобингда ҲАМ айнан шу белгиларни сақла, асл қийматни ўйлаб топма.
 4. МАНБА: фақат ҳужжатлардаги ҳақиқий матнга таян. Ҳеч нарсани ўйлаб топма. Топилмаса — «ҳужжатларда топилмади» деб айт ва аниқлик сўра.
 5. ИҚТИБОС: ҳар бир даъвони манба билан кўрсат — (файл номи, бет/саҳифа N, банд/§). Ташқи (лex.uz) акт бўлса — акт рақами + сана + URL.
 6. CLI БУЙРУҚЛАРИНИ ИШГА ТУШИРМА (metodist, npm ва ҳ.к.) — фақат ҳужжатларни ўқиб жавоб бер.
@@ -54,8 +61,8 @@ const DEEP_AUDIT_INSTRUCTIONS = `--- ЧУҚУР АУДИТ РЕЖИМИ (МАЖ�
 Бу савол КЕНГ ҚАМРОВЛИ, тизимли таҳлил талаб қилади. Қисқа ёки юзаки жавоб БЕРМА.
 Қуйидаги тартибда ишла:
 
-1. РЕЖА ТУЗ: аввал \`Glob\` (масалан "**/*.pdf", "**/*.docx") ва \`Grep\` билан КОРПУСДАГИ тегишли БАРЧА папка ва ҳужжатларни санаб чиқ. Берилган бошланғич парчалар — фақат йўналиш; улар билан ЧЕКЛАНМА.
-2. ҲАР БИР тегишли бўлим/папкани кўриб чиқ — биттагина эмас. Сканер PDF учун матн ".cache/text/<нисбий йўл>.json" да: ШУ JSON ни \`Read\` билан оч (PDF ни эмас).
+1. РЕЖА ТУЗ: аввал \`Glob\` ("**/*.txt") ва \`Grep\` билан ЖОРИЙ ИШ ПАПКАНГ (cwd) даги тегишли БАРЧА папка ва ҳужжатларни санаб чиқ. Берилган бошланғич парчалар — фақат йўналиш; улар билан ЧЕКЛАНМА.
+2. ҲАР БИР тегишли бўлим/папкани кўриб чиқ — биттагина эмас. Ҳар бир ҳужжат cwd да ".txt" файл сифатида (тўлиқ матн, OCR ҳам шу ерда) — уни \`Read\` билан оч.
 3. БАНД-БАНД таққосла: ташқи акт/талабнинг ҲАР БИР банди ↔ ички ҳужжатдаги ҳолат. Ҳар бир банд учун: мавжуд / йўқ / тўлиқ эмас — аниқ белгила.
 4. ҲЕЧ НИМАНИ ўйлаб топма ва умумлаштириб юзаки ёзма. Фақат ҳужжатдаги ҳақиқий матнга таян; топилмаса "ҳужжатларда топилмади" деб ёз.
 5. НАТИЖА ТУЗИЛМАСИ (Markdown):
@@ -812,9 +819,9 @@ function runClaude(prompt, sessionId, opts = {}) {
     }
 
     const child = spawn(CLAUDE_BIN, args, {
-      // cwd = korpus papkasi: Claude Read/Grep/Glob bilan hujjatlarni o'qiy oladi.
-      // cwd alohida uzatiladi — bo'shliqli yo'l (AI Metodist Agent) muammo bermaydi.
-      cwd: AGENT_DIR || AGENT_WORKDIR,
+      // cwd = MASKALANGAN nusxa papkasi (opts.cwd): Claude faqat maskalangan
+      // .txt larni o'qiy oladi — xom korpus (AGENT_DIR) ga yo'l yo'q.
+      cwd: opts.cwd || AGENT_WORKDIR,
       shell: process.platform === 'win32',
       windowsHide: true,
     });
@@ -934,17 +941,17 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
     if (rag && Array.isArray(rag.chunks) && rag.chunks.length > 0) {
       const excerpts = rag.chunks
         .map((c, i) => {
-          const jsonPath = `.cache/text/${c.rel_path.replace(/\.[^./]+$/, '.json')}`;
-          return `[${i + 1}] hujjat: ${c.rel_path}\n   to'liq matn (OCR): ${jsonPath}\n   parcha: ${c.text}`;
+          // To'liq matn cwd ichidagi maskalangan .txt faylida.
+          const txtPath = `${c.rel_path.replace(/\\/g, '/')}.txt`;
+          return `[${i + 1}] hujjat: ${c.rel_path}\n   to'liq matn (cwd): ${txtPath}\n   parcha: ${c.text}`;
         })
         .join('\n\n');
       ragContext =
         `--- Bilim bazasidan tegishli boshlang'ich parchalar (avtomatik qidiruv) ---\n` +
         `${excerpts}\n` +
         `--- Bu faqat YO'NALTIRUVCHI parchalar. Aniq, band-darajasidagi javob uchun ` +
-        `yuqoridagi hujjatlarning TO'LIQ matnini o'qing: skaner PDF bo'lsa ko'rsatilgan ` +
-        `".cache/text/...json" faylini Read bilan oching; kerak bo'lsa Grep/Glob bilan ` +
-        `boshqa tegishli hujjatlarni ham toping. ---`;
+        `jorij ish papkangiz (cwd) dagi ko'rsatilgan ".txt" faylni Read bilan oching; ` +
+        `kerak bo'lsa Grep/Glob ("**/*.txt") bilan boshqa tegishli hujjatlarni ham toping. ---`;
       kbMatches = groupKbMatches(rag.chunks);
     }
   }
@@ -968,9 +975,23 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
   }
   const rawContent = contentParts.join('\n\n');
 
-  // Maxfiylik: matnni Claude (bulut) ga yuborishdan OLDIN maskalaymiz.
+  // --- Maxfiylik oqimi ---
+  // 1) Diskdagi maska xaritasini yuklaymiz (server restart bo'lsa ham unmask ishlasin).
+  // 2) Maskalangan korpus nusxasini (agent o'qiydigan .txt papka) zarur bo'lsa quramiz;
+  //    bu maskalashda barcha placeholder->asl yozuvlar globalMap'ga to'planadi.
+  // 3) Promptni maskalaymiz (hash-asosli — bir xil qiymat doim bir xil belgi).
+  // 4) Xaritani diskka saqlaymiz.
   const masker = createMasker(loadMaskTerms());
+  loadMaskMap(MASK_MAP_FILE);
+  const mirror = ensureMaskedCorpus({
+    agentDir: AGENT_DIR,
+    maskedDir: MASKED_CORPUS_DIR,
+    markerPath: MASKED_MARKER,
+    masker,
+  });
   const maskedContent = masker.mask(rawContent);
+  saveMaskMap(MASK_MAP_FILE);
+
   const privacyNote =
     `\n\n--- MAXFIYLIK QOIDASI ---\n` +
     `Yuqoridagi matndagi [MAXFIY_xxx], [RAQAM_xxx], [TELEFON_xxx], [EMAIL_xxx] ` +
@@ -979,12 +1000,18 @@ app.post('/api/chat', requireAuth, upload.single('file'), async (req, res) => {
     `tiklamang yoki so'ramang.`;
   const prompt = maskedContent + privacyNote;
 
+  // Agent FAQAT maskalangan nusxani (cwd) o'qiydi — xom AGENT_DIR ga YO'L YO'Q.
+  // Nusxa hali tayyor bo'lmasa (indeks yo'q), bo'sh ishchi papka beriladi:
+  // agent faqat promptdagi maskalangan parchalarga tayanadi.
+  const corpusReady = mirror.state === 'fresh' || mirror.state === 'built';
+  const runCwd = corpusReady ? MASKED_CORPUS_DIR : AGENT_WORKDIR;
+
   try {
-    // Chuqur rejimda agentga ko'proq qadam (200) va ko'proq vaqt (20 daqiqa) beriladi —
-    // o'nlab hujjatni o'qib, tizimli audit qila olishi uchun.
+    // Maskalangan nusxa .txt — o'qish tez. Chuqur rejimda ko'proq qadam beriladi,
+    // lekin vaqt budjeti uzun emas (tez javob): chuqur 120 qadam/12 daq, oddiy 48/10 daq.
     const runOpts = deepMode
-      ? { maxTurns: 200, timeoutMs: 20 * 60 * 1000 }
-      : { maxTurns: 48, timeoutMs: REQUEST_TIMEOUT_MS };
+      ? { maxTurns: 120, timeoutMs: 12 * 60 * 1000, cwd: runCwd }
+      : { maxTurns: 48, timeoutMs: REQUEST_TIMEOUT_MS, cwd: runCwd };
     const result = await runClaude(prompt, currentSessionId, runOpts);
     if (result && typeof result.session_id === 'string') {
       currentSessionId = result.session_id;

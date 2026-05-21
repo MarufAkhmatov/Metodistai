@@ -8,7 +8,7 @@
 // (email, telefon, uzun raqamlar) ishonchli aniqlanadi; ism/tashkilot
 // nomlari faqat mask-terms.txt ro'yxatidagilar maskalanadi.
 import crypto from 'node:crypto';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +28,33 @@ const globalMap = new Map();
 
 export function resetMaskMap() {
   globalMap.clear();
+}
+
+// Xaritani diskka saqlaymiz — server qayta ishga tushgach unmask ishlashi uchun.
+// DIQQAT: bu fayl ASL maxfiy qiymatlarni saqlaydi — faqat LOKAL turadi, hech
+// qachon bulutga yuborilmaydi va .agent-workdir/ (gitignore) ichida bo'lishi kerak.
+export function saveMaskMap(file) {
+  try {
+    const obj = {};
+    for (const [ph, original] of globalMap) obj[ph] = original;
+    writeFileSync(file, JSON.stringify(obj), 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function loadMaskMap(file) {
+  try {
+    if (!existsSync(file)) return false;
+    const obj = JSON.parse(readFileSync(file, 'utf8'));
+    for (const [ph, original] of Object.entries(obj)) {
+      if (!globalMap.has(ph)) globalMap.set(ph, original);
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function loadMaskTerms() {
