@@ -1,0 +1,13 @@
+node_modules
+dist
+.DS_Store
+.env
+.env.local
+*.log
+__pycache__
+*.pyc
+.venv
+# Maxfiy atamalar ro'yxati — hech qachon repozitoriyga tushmasin.
+mask-terms.txt
+# Claude CLI uchun bo'sh ishchi papka.
+.agent-workdir/

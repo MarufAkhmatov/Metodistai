@@ -33,4 +33,15 @@ export default defineConfig({
 
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+
+  server: {
+    // Faqat localhost — sayt tarmoqdagi boshqa qurilmalarga ochilmaydi.
+    host: '127.0.0.1',
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:3001',
+        changeOrigin: true,
+      },
+    },
+  },
 })

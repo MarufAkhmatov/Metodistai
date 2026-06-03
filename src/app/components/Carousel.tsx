@@ -1,26 +1,28 @@
 import { useRef, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { ArrowRight } from 'lucide-react';
+import { FileText } from 'lucide-react';
+import type { FolderInfo } from '../types';
+import { useLang } from '../i18n';
 
-export const FOLDERS = [
-  'Policies', 'SOPs', 'Finance', 'Legal', 'Vendors',
-  'Compliance', 'Risk Assess', 'Audit Logs', 'Reports', 'Incidents', 
-  'Documents', 'Approvals', 'Accounts', 'Archiving', 'HR Records', 
-  'Training', 'Contracts', 'Marketing', 'IT Support', 'Assets',
-  'Security', 'Operations', 'Analytics', 'Strategy'
-];
+function formatSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
 
 interface CarouselProps {
   activeIndex: number;
   setActiveIndex: (val: number | ((prev: number) => number)) => void;
+  folders: FolderInfo[];
 }
 
-export function Carousel({ activeIndex, setActiveIndex }: CarouselProps) {
+export function Carousel({ activeIndex, setActiveIndex, folders }: CarouselProps) {
+  const { t: tr } = useLang();
   const [isDragging, setIsDragging] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
   const panStartIndexRef = useRef(activeIndex);
-  
-  const totalItems = FOLDERS.length;
+
+  const totalItems = folders.length;
 
   useEffect(() => {
     const handlePointerMove = (e: PointerEvent) => {
@@ -56,8 +58,18 @@ export function Carousel({ activeIndex, setActiveIndex }: CarouselProps) {
     };
   }, [isDragging, activeIndex, totalItems]);
 
+  if (totalItems === 0) {
+    return (
+      <div className="relative w-full h-[300px] md:h-[400px] flex items-center justify-center">
+        <p className="text-white/40 text-sm text-center px-6">
+          {tr('carousel.noFolders')}
+        </p>
+      </div>
+    );
+  }
+
   const currentModIndex = ((activeIndex % totalItems) + totalItems) % totalItems;
-  const t = currentModIndex / (totalItems - 1);
+  const t = totalItems > 1 ? currentModIndex / (totalItems - 1) : 0;
   const cx = 100 + 400 * t;
   const cy = 200 - 500 * t + 500 * t * t;
 
@@ -96,8 +108,8 @@ export function Carousel({ activeIndex, setActiveIndex }: CarouselProps) {
           setActiveIndex(panStartIndexRef.current + shift);
         }}
       >
-        {FOLDERS.map((folder, index) => {
-          const totalItems = FOLDERS.length;
+        {folders.map((folder, index) => {
+          const totalItems = folders.length;
           
           // Calculate the shortest circular path distance (offset) from the activeIndex
           let closestIndex = index;
@@ -200,37 +212,37 @@ export function Carousel({ activeIndex, setActiveIndex }: CarouselProps) {
                     </div>
                   )}
                   
-                  {/* Folder Label */}
-                  <div className={`font-medium tracking-wide z-10 ${isActive ? 'text-white text-2xl mb-1 drop-shadow-lg' : 'text-white text-base drop-shadow-md text-right'}`}>
-                    {folder}
+                  {/* Folder Label — active folder name sits on the right, smaller, clear of the white card */}
+                  <div className={`font-medium tracking-wide z-10 drop-shadow-md text-white ${isActive ? 'text-lg mb-1 drop-shadow-lg text-right' : 'text-base text-right'}`}>
+                    {folder.name}
                   </div>
 
-                  {/* Active specific details */}
+                  {/* White folder — count, file types and total size of the active folder */}
                   {isActive && (
-                    <motion.div 
+                    <motion.div
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: -90 }}
                       transition={{ delay: 0.2 }}
-                      className="absolute top-[8px] left-0 w-[198px] h-[117px] bg-white/[0.85] backdrop-blur-md rounded-2xl p-3 shadow-[0_15px_50px_rgba(0,0,0,0.5)] z-30 flex flex-col justify-between pointer-events-auto cursor-default"
+                      className="absolute top-[8px] left-0 w-[198px] h-[117px] bg-white/[0.85] backdrop-blur-md rounded-2xl p-3 shadow-[0_15px_50px_rgba(0,0,0,0.5)] z-30 flex flex-col items-center justify-center pointer-events-auto cursor-default"
                     >
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-black font-semibold text-[13px]">Corporate</span>
-                          <div className="w-[18px] h-[18px] rounded-full border border-black/10 flex items-center justify-center">
-                            <ArrowRight size={9} className="text-black" />
-                          </div>
-                        </div>
-                        <span className="text-black/50 text-[9px] font-medium tracking-wider uppercase">Jan 01 - Nov 30</span>
+                      <div className="flex items-center gap-1.5">
+                        <FileText size={16} className="text-emerald-600" />
+                        <span className="text-[30px] font-light text-black tracking-tight leading-none">
+                          {folder.documentCount}
+                        </span>
+                        <span className="text-[11px] text-black/50 font-medium self-end mb-1">{tr('carousel.file')}</span>
                       </div>
-                      
-                      <div>
-                        <div className="flex items-end justify-between mb-1.5">
-                          <span className="text-[32px] font-light text-black tracking-tight leading-none">87<span className="text-[20px] text-black/40">%</span></span>
-                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mb-1" />
-                        </div>
-                        <div className="w-full h-1 bg-black/10 rounded-full overflow-hidden">
-                          <div className="w-[87%] h-full bg-emerald-500 rounded-full" />
-                        </div>
+                      <div className="text-[10px] text-black/60 font-medium mt-1.5 text-center leading-tight px-1">
+                        {[
+                          folder.pdfCount > 0 && `PDF ${folder.pdfCount}`,
+                          folder.wordCount > 0 && `Word ${folder.wordCount}`,
+                          folder.excelCount > 0 && `Excel ${folder.excelCount}`,
+                        ]
+                          .filter(Boolean)
+                          .join('  ·  ') || tr('carousel.noDocuments')}
+                      </div>
+                      <div className="text-[11px] text-black/45 font-semibold mt-1">
+                        {formatSize(folder.totalSizeBytes)}
                       </div>
                     </motion.div>
                   )}
